@@ -35,7 +35,7 @@ func NewCometRpc(url string, logger zerolog.Logger) (*CometRpc, error) {
 		url: url,
 		logger: cometLogger,
 	}
-	c.logger.Debug().Msg("client connected")
+	c.logger.Debug().Str("url", url).Msg("client connected")
 	return c, nil
 }
 
@@ -62,7 +62,13 @@ func (c *CometRpc) Block(height int64) (*coretypes.ResultBlock, error) {
 func (c *CometRpc) Subscribe(query string) (<-chan coretypes.ResultEvent, error) {
 	err := c.client.Start()
 	if err != nil {
+		c.logger.Error().Err(err).Str("method", "start").Msg("failed to start client")
 		return nil, err
 	}
-	return c.client.Subscribe(c.ctx, "", query)
+	channel, err := c.client.Subscribe(c.ctx, "", query)
+	if err != nil {
+		c.logger.Error().Err(err).Str("method", "subscribe").Msg("failed to subscribe")
+	}
+	c.logger.Debug().Str("query", query).Msg("subscribed")
+	return channel, err
 }

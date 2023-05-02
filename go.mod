@@ -6,6 +6,7 @@ require (
 	github.com/cometbft/cometbft v0.37.1
 	github.com/ericlagergren/decimal v0.0.0-20221120152707-495c53812d05
 	github.com/influxdata/influxdb-client-go/v2 v2.12.3
+	github.com/osmosis-labs/assetlist v0.0.0-00010101000000-000000000000
 	github.com/rs/zerolog v1.29.1
 )
 
@@ -43,7 +44,6 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
-	github.com/stretchr/testify v1.8.2 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	golang.org/x/crypto v0.7.0 // indirect
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
@@ -54,3 +54,5 @@ require (
 	google.golang.org/grpc v1.54.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 )
+
+replace github.com/osmosis-labs/assetlist => github.com/osmosis-labs/assetlists/client/go v0.0.0-20230502165800-d75dc3af9096
