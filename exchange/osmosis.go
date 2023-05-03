@@ -1,4 +1,4 @@
-package chain
+package exchange
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
+	"github.com/mintthemoon/chaindex/chain"
 	"github.com/mintthemoon/chaindex/config"
 	"github.com/mintthemoon/chaindex/store"
 	"github.com/mintthemoon/chaindex/token"
@@ -17,8 +18,8 @@ import (
 )
 
 type (
-	OsmosisRpc struct {
-		rpc *CometRpc
+	OsmosisExchange struct {
+		rpc *chain.CometRpc
 		assets map[string]assetlist.Asset
 		store store.Store
 		logger zerolog.Logger
@@ -31,23 +32,30 @@ type (
 	}
 )
 
-func NewOsmosisRpc(url string, store store.Store, logger zerolog.Logger) (*OsmosisRpc, error) {
-	chainLogger := logger.With().Str("chain", "osmosis").Logger()
-	rpc, err := NewCometRpc(url, chainLogger)
+func NewOsmosisExchange(url string, store store.Store, logger zerolog.Logger) (*OsmosisExchange, error) {
+	rpc, err := chain.NewCometRpc(url, logger)
 	if err != nil {
 		return nil, err
 	}
-	o := &OsmosisRpc{
+	o := &OsmosisExchange{
 		rpc: rpc,
 		store: store,
-		logger: chainLogger,
+		logger: logger,
 	}
 	o.logger.Info().Msg("chain connected")
 	err = o.PollAssetList()
 	return o, err
 }
 
-func (o *OsmosisRpc) Subscribe() error {
+func (o *OsmosisExchange) Name() string {
+	return "osmosis"
+}
+
+func (o *OsmosisExchange) DisplayName() string {
+	return "Osmosis"
+}
+
+func (o *OsmosisExchange) Subscribe() error {
 	channel, err := o.rpc.Subscribe("tm.event='Tx' AND token_swapped.module='gamm'")
 	if err != nil {
 		return err
@@ -66,7 +74,7 @@ func (o *OsmosisRpc) Subscribe() error {
 	return nil
 }
 
-func (o *OsmosisRpc) GetTrades(event *coretypes.ResultEvent) []trading.BasicTrade {
+func (o *OsmosisExchange) GetTrades(event *coretypes.ResultEvent) []trading.BasicTrade {
 	trades := []trading.BasicTrade{}
 	swaps, err := ParseOsmosisTokenSwaps(event)
 	if err != nil {
@@ -104,7 +112,7 @@ func (o *OsmosisRpc) GetTrades(event *coretypes.ResultEvent) []trading.BasicTrad
 	return trades
 }
 
-func (o *OsmosisRpc) PollAssetList() error {
+func (o *OsmosisExchange) PollAssetList() error {
 	url := os.Getenv("OSMOSIS_ASSETLIST_JSON_URL")
 	if url == "" {
 		url = config.DefaultOsmosisAssetlistJsonUrl

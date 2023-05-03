@@ -4,16 +4,17 @@ import (
 	"os"
 	"time"
 
-	"github.com/mintthemoon/chaindex/chain"
+	"github.com/mintthemoon/chaindex/api"
 	"github.com/mintthemoon/chaindex/config"
+	"github.com/mintthemoon/chaindex/exchange"
 	"github.com/mintthemoon/chaindex/store"
 	"github.com/rs/zerolog"
 )
 
 func main() {
-	logLevelEnv := os.Getenv("LOG_LEVEL")
+	logLevelEnv := os.Getenv(config.EnvLogLevel)
 	if logLevelEnv == "" {
-		logLevelEnv = "info"
+		logLevelEnv = config.DefaultLogLevel
 	}
 	logLevel, err := zerolog.ParseLevel(logLevelEnv)
 	if err != nil {
@@ -49,22 +50,17 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to initialize osmosis store")
 	}
-	o, err := chain.NewOsmosisRpc("https://osmosis-rpc.polkachu.com:443", osmosisStore, logger)
+	exchanges := map[string]exchange.Exchange{}
+	exchanges["osmosis"], err = exchange.NewExchange("osmosis", osmosisStore, logger)
 	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to create osmosis client")
+		logger.Fatal().Err(err).Msg("failed to initialize osmosis exchange")
 	}
-	err = o.Subscribe()
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to subscribe osmosis client")
-	}
-	for {
-		time.Sleep(10 * time.Second)
-		trades, err := osmosisStore.Trades("OSMO", "USDC", time.Now().Add(10 * -time.Minute), time.Now())
+	for _, exchange := range exchanges {
+		err = exchange.Subscribe()
 		if err != nil {
-			logger.Fatal().Err(err).Msg("failed to get trades")
-		}
-		for _, trade := range trades {
-			logger.Info().Str("base", trade.Base.Symbol).Str("quote", trade.Quote.Symbol).Str("price", trade.Price().String()).Msg("trade")
+			logger.Fatal().Err(err).Msg("failed to subscribe to exchange")
 		}
 	}
+	api := api.NewApi(exchanges, logger)
+	api.Start()
 }
