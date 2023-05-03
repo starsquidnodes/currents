@@ -1,13 +1,13 @@
 package main
 
 import (
-	"context"
 	"os"
 	"time"
 
-    "github.com/influxdata/influxdb-client-go/v2"
-	"github.com/rs/zerolog"
 	"github.com/mintthemoon/chaindex/chain"
+	"github.com/mintthemoon/chaindex/config"
+	"github.com/mintthemoon/chaindex/store"
+	"github.com/rs/zerolog"
 )
 
 func main() {
@@ -28,41 +28,43 @@ func main() {
 		With().
 		Timestamp().
 		Logger()
-	client := influxdb2.NewClientWithOptions(
-		"http://localhost:8086",
-		"hlPH0W73wF_ATePRZ2ifWwnPuHRJMkOJiOLH5Y-6r0C7uZjzY2nP0tG8MyNplje1PK-9E5CKyFHhFztEYoE31A==",
-		influxdb2.DefaultOptions().
-			SetBatchSize(5).
-			SetFlushInterval(250).
-			SetRetryInterval(500).
-			SetMaxRetryInterval(2500),
-	)
-	defer client.Close()
-	ctx := context.Background()
-	health, err := client.Health(ctx)
-	if err != nil {
-		panic(err)
+	storeBackend := os.Getenv(config.EnvStoreBackend)
+	if storeBackend == "" {
+		storeBackend = config.DefaultStoreBackend
 	}
-	logger.Info().
-		Str("name", health.Name).
-		Str("status", string(health.Status)).
-		Str("version", *health.Version).
-		Str("commit", *health.Commit).
-		Msgf("database %s", *health.Message)
-	writeApi := client.WriteAPI("kujira", "test")
-	defer writeApi.Flush()
-	errorsChannel := writeApi.Errors()
-	go func() {
-		for err := range errorsChannel {
-			logger.Error().Err(err).Msg("database write error")
-		}
-	}()
-	o, err := chain.NewOsmosisRpc("https://osmosis-rpc.polkachu.com:443", logger)
+	storeUrl := os.Getenv(config.EnvStoreUrl)
+	if storeUrl == "" {
+		storeUrl = "http://localhost:8086"
+	}
+	storeManager, err := store.NewStoreManager(storeBackend, storeUrl, logger)
 	if err != nil {
-		panic(err)
+		logger.Fatal().Err(err).Msg("failed to initialize database")
+	}
+	defer storeManager.Close()
+	err = storeManager.Health()
+	if err != nil {
+		logger.Fatal().Err(err).Msg("database health check failed")
+	}
+	osmosisStore, err := storeManager.Store("osmosis")
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to initialize osmosis store")
+	}
+	o, err := chain.NewOsmosisRpc("https://osmosis-rpc.polkachu.com:443", osmosisStore, logger)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to create osmosis client")
 	}
 	err = o.Subscribe()
 	if err != nil {
-		panic(err)
+		logger.Fatal().Err(err).Msg("failed to subscribe osmosis client")
+	}
+	for {
+		time.Sleep(10 * time.Second)
+		trades, err := osmosisStore.Trades("OSMO", "USDC", time.Now().Add(10 * -time.Minute), time.Now())
+		if err != nil {
+			logger.Fatal().Err(err).Msg("failed to get trades")
+		}
+		for _, trade := range trades {
+			logger.Info().Str("base", trade.Base.Symbol).Str("quote", trade.Quote.Symbol).Str("price", trade.Price().String()).Msg("trade")
+		}
 	}
 }

@@ -8,6 +8,10 @@ import (
 	"time"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
+	"github.com/mintthemoon/chaindex/config"
+	"github.com/mintthemoon/chaindex/store"
+	"github.com/mintthemoon/chaindex/token"
+	"github.com/mintthemoon/chaindex/trading"
 	"github.com/osmosis-labs/assetlist"
 	"github.com/rs/zerolog"
 )
@@ -16,22 +20,18 @@ type (
 	OsmosisRpc struct {
 		rpc *CometRpc
 		assets map[string]assetlist.Asset
+		store store.Store
 		logger zerolog.Logger
 	}
 
 	OsmosisTokenSwap struct {
-		In Token
-		Out Token
+		In token.Token
+		Out token.Token
 		Pool string
-	}
-
-	OsmosisTrade struct {
-		Base Token
-		Quote Token
 	}
 )
 
-func NewOsmosisRpc(url string, logger zerolog.Logger) (*OsmosisRpc, error) {
+func NewOsmosisRpc(url string, store store.Store, logger zerolog.Logger) (*OsmosisRpc, error) {
 	chainLogger := logger.With().Str("chain", "osmosis").Logger()
 	rpc, err := NewCometRpc(url, chainLogger)
 	if err != nil {
@@ -39,6 +39,7 @@ func NewOsmosisRpc(url string, logger zerolog.Logger) (*OsmosisRpc, error) {
 	}
 	o := &OsmosisRpc{
 		rpc: rpc,
+		store: store,
 		logger: chainLogger,
 	}
 	o.logger.Info().Msg("chain connected")
@@ -52,17 +53,21 @@ func (o *OsmosisRpc) Subscribe() error {
 		return err
 	}
 	o.logger.Info().Msg("subscribed to swap events")
-	for {
-		event := <-channel
-		trades := o.GetTrades(&event)
-		for _, trade := range trades {
-			o.logger.Info().Str("base", trade.Base.String()).Str("quote", trade.Quote.String()).Msg("trade")
+	go func() {
+		for {
+			event := <-channel
+			trades := o.GetTrades(&event)
+			for _, trade := range trades {
+				o.logger.Debug().Str("base", trade.Base.String()).Str("quote", trade.Quote.String()).Msg("trade")
+				o.store.SaveTrade(&trade)
+			}
 		}
-	}
+	}()
+	return nil
 }
 
-func (o *OsmosisRpc) GetTrades(event *coretypes.ResultEvent) []OsmosisTrade {
-	trades := []OsmosisTrade{}
+func (o *OsmosisRpc) GetTrades(event *coretypes.ResultEvent) []trading.BasicTrade {
+	trades := []trading.BasicTrade{}
 	swaps, err := ParseOsmosisTokenSwaps(event)
 	if err != nil {
 		o.logger.Error().Err(err).Msg("failed to parse swap event")
@@ -72,6 +77,7 @@ func (o *OsmosisRpc) GetTrades(event *coretypes.ResultEvent) []OsmosisTrade {
 		o.logger.Warn().Msg("cannot process trades when asset list is empty")
 		return trades
 	}
+	now := time.Now()
 	for _, swap := range swaps {
 		inAsset, ok := o.assets[swap.In.Symbol]
 		if !ok {
@@ -83,17 +89,17 @@ func (o *OsmosisRpc) GetTrades(event *coretypes.ResultEvent) []OsmosisTrade {
 			o.logger.Debug().Str("symbol", swap.Out.Symbol).Msg("skipping unlisted asset swap")
 			continue
 		}
-		base, err := swap.In.RebaseOsmosisAsset(inAsset)
+		base, err := RebaseOsmosisAsset(&swap.In, inAsset)
 		if err != nil {
-			o.logger.Warn().Err(err).Str("symbol", swap.In.Symbol).Msg("failed to rebase in token")
+			o.logger.Debug().Err(err).Str("symbol", swap.In.Symbol).Msg("failed to rebase in token")
 			continue
 		}
-		quote, err := swap.Out.RebaseOsmosisAsset(outAsset)
+		quote, err := RebaseOsmosisAsset(&swap.Out, outAsset)
 		if err != nil {
-			o.logger.Warn().Err(err).Str("symbol", swap.Out.Symbol).Msg("failed to rebase out token")
+			o.logger.Debug().Err(err).Str("symbol", swap.Out.Symbol).Msg("failed to rebase out token")
 			continue
 		}
-		trades = append(trades, OsmosisTrade{Base: base, Quote: quote})
+		trades = append(trades, trading.BasicTrade{Base: base, Quote: quote, Time: now})
 	}
 	return trades
 }
@@ -101,20 +107,20 @@ func (o *OsmosisRpc) GetTrades(event *coretypes.ResultEvent) []OsmosisTrade {
 func (o *OsmosisRpc) PollAssetList() error {
 	url := os.Getenv("OSMOSIS_ASSETLIST_JSON_URL")
 	if url == "" {
-		url = "https://raw.githubusercontent.com/osmosis-labs/assetlists/main/osmosis-1/osmosis-1.assetlist.json"
+		url = config.DefaultOsmosisAssetlistJsonUrl
 	}
-	refreshIntervalStr := os.Getenv("OSMOSIS_ASSETLIST_REFRESH_INTERVAL")
+	refreshIntervalStr := os.Getenv(config.EnvOsmosisAssetlistRefreshInterval)
 	if refreshIntervalStr == "" {
-		refreshIntervalStr = "15m"
+		refreshIntervalStr = config.DefaultOsmosisAssetlistRefreshInterval
 	}
 	refreshInterval, err := time.ParseDuration(refreshIntervalStr)
 	if err != nil {
 		o.logger.Error().Err(err).Msg("failed to parse asset list refresh interval")
 		return err
 	}
-	retryIntervalStr := os.Getenv("OSMOSIS_ASSETLIST_RETRY_INTERVAL")
+	retryIntervalStr := os.Getenv(config.EnvOsmosisAssetlistRetryInterval)
 	if retryIntervalStr == "" {
-		retryIntervalStr = "30s"
+		retryIntervalStr = config.DefaultOsmosisAssetlistRetryInterval
 	}
 	retryInterval, err := time.ParseDuration(retryIntervalStr)
 	if err != nil {
@@ -125,7 +131,7 @@ func (o *OsmosisRpc) PollAssetList() error {
 		for {
 			assetList, err := LoadOsmosisAssetList(url)
 			if err != nil {
-				o.logger.Error().Err(err).Msg("failed to load asset list")
+				o.logger.Error().Err(err).Str("url", url).Msg("failed to load asset list")
 				time.Sleep(retryInterval)
 				continue
 			}
@@ -141,14 +147,14 @@ func (o *OsmosisRpc) PollAssetList() error {
 	return nil
 }
 
-func (t *Token) RebaseOsmosisAsset(asset assetlist.Asset) (Token, error) {
+func RebaseOsmosisAsset(t *token.Token, asset assetlist.Asset) (token.Token, error) {
 	exponents := make(map[string]int64, len(asset.DenomUnits))
 	for _, denomUnit := range asset.DenomUnits {
 		exponents[denomUnit.Denom] = denomUnit.Exponent
 	}
 	displayExponent, ok := exponents[asset.Display]
 	if !ok {
-		return Token{}, fmt.Errorf("could not determine display units for %s", t.Symbol)
+		return token.Token{}, fmt.Errorf("could not determine display units for %s", t.Symbol)
 	}
 	exponent := t.Amount.Scale() + int(displayExponent)
 	return t.Rebase(exponent, asset.Symbol), nil
@@ -180,11 +186,11 @@ func ParseOsmosisTokenSwaps(event *coretypes.ResultEvent) ([]OsmosisTokenSwap, e
 		if module != "gamm" {
 			continue
 		}
-		in, err := ParseToken(tokensIn[i])
+		in, err := token.ParseToken(tokensIn[i])
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse input token '%s': %v", tokensIn[i], err)
 		}
-		out, err := ParseToken(tokensOut[i])
+		out, err := token.ParseToken(tokensOut[i])
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse output token '%s': %v", tokensOut[i], err)
 		}
@@ -205,5 +211,8 @@ func LoadOsmosisAssetList(url string) (*assetlist.Root, error) {
 	defer res.Body.Close()
 	root := &assetlist.Root{}
 	err = json.NewDecoder(res.Body).Decode(root)
+	if err == nil && len(root.Assets) == 0 {
+		err = fmt.Errorf("asset list is empty")
+	}
 	return root, err
 }
