@@ -1,7 +1,7 @@
 ## Config options
 | `ENV_VAR` | Description | Default | Options |
 | ------- | ---- | --- | --- |
-| `LOG_LEVEL` | Log message filter | info | debug, info, warn, error |
+| `LOG_LEVEL` | Log message filter | info | trace, debug, info, warn, error |
 | `STORE_BACKEND` | Backend database type | influxdb2 | influxdb2 |
 | `STORE_URL` | Backend database URL | http://localhost:8086 | URL |
 | `INFLUXDB_TOKEN` | InfluxDB2 auth token | _(required)_ | String (secret) |

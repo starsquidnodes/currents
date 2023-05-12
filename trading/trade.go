@@ -8,43 +8,34 @@ import (
 )
 
 type (
-	Trade interface {
-		BaseVolume() *decimal.Big
-		QuoteVolume() *decimal.Big
-		BaseAsset() string
-		QuoteAsset() string
-		Timestamp() time.Time
-		Price() *decimal.Big
-	}
-
-	BasicTrade struct {
-		Base token.Token
-		Quote token.Token
-		Time time.Time
+	Trade struct {
+		Base token.Token `json:"base"`
+		Quote token.Token `json:"quote"`
+		Time time.Time `json:"time"`
 	}
 )
 
-func (b *BasicTrade) BaseAsset() string {
+func (b *Trade) BaseAsset() string {
 	return b.Base.Symbol
 }
 
-func (b *BasicTrade) QuoteAsset() string {
+func (b *Trade) QuoteAsset() string {
 	return b.Quote.Symbol
 }
 
-func (b *BasicTrade) BaseVolume() *decimal.Big {
+func (b *Trade) BaseVolume() *decimal.Big {
 	return &b.Base.Amount
 }
 
-func (b *BasicTrade) QuoteVolume() *decimal.Big {
+func (b *Trade) QuoteVolume() *decimal.Big {
 	return &b.Quote.Amount
 }
 
-func (b *BasicTrade) Timestamp() time.Time {
+func (b *Trade) Timestamp() time.Time {
 	return b.Time
 }
 
-func (b *BasicTrade) Price() *decimal.Big {
+func (b *Trade) Price() *decimal.Big {
 	price := decimal.Big{}
 	price.Quo(&b.Quote.Amount, &b.Base.Amount)
 	return &price

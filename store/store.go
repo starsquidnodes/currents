@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/mintthemoon/chaindex/trading"
+	"github.com/mintthemoon/chaindex/token"
 	"github.com/rs/zerolog"
 )
 
@@ -16,10 +17,9 @@ type (
 	}
 
 	Store interface {
-		SaveTrade(trading.Trade) error
-		SaveCandle(trading.Candle) error
-		SaveTicker(trading.Ticker) error
-		Trades(base string, quote string, start time.Time, end time.Time) ([]trading.BasicTrade, error)
+		Name() string
+		SaveTrade(*trading.Trade) error
+		Trades(pairs *token.Pair, start time.Time, end time.Time) ([]*trading.Trade, error)
 	}
 )
 

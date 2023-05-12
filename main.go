@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mintthemoon/chaindex/api"
@@ -46,21 +47,35 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("database health check failed")
 	}
-	osmosisStore, err := storeManager.Store("osmosis")
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to initialize osmosis store")
+	exchangesEnv := os.Getenv(config.EnvExchanges)
+	if exchangesEnv == "" {
+		exchangesEnv = config.DefaultExchanges
 	}
-	exchanges := map[string]exchange.Exchange{}
-	exchanges["osmosis"], err = exchange.NewExchange("osmosis", osmosisStore, logger)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to initialize osmosis exchange")
-	}
-	for _, exchange := range exchanges {
+	exchangeNames := strings.Split(exchangesEnv, ",")
+	exchanges := make(map[string]exchange.Exchange, len(exchangeNames))
+	for _, exchangeName := range exchangeNames {
+		store, err := storeManager.Store(exchangeName)
+		if err != nil {
+			logger.Error().Err(err).Str("exchange", exchangeName).Msg("failed to initialize exchange store")
+			continue
+		}
+		exchange, err := exchange.NewExchange(exchangeName, store, logger)
+		if err != nil {
+			logger.Error().Err(err).Str("exchange", exchangeName).Msg("failed to initialize exchange")
+			continue
+		}
 		err = exchange.Subscribe()
 		if err != nil {
-			logger.Fatal().Err(err).Msg("failed to subscribe to exchange")
+			logger.Error().Err(err).Msg("failed to subscribe to exchange")
+			continue
 		}
+		exchanges[exchangeName] = exchange
 	}
-	api := api.NewApi(exchanges, logger)
+	exchangeManager, err := exchange.NewExchangeManager(exchanges, logger)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to initialize exchange manager")
+	}
+	exchangeManager.Start()
+	api := api.NewApi(exchanges, exchangeManager, storeManager, logger)
 	api.Start()
 }

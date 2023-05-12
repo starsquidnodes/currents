@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/influxdata/influxdb-client-go/v2"
 	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
-	"github.com/rs/zerolog"
-	"github.com/mintthemoon/chaindex/token"
 	"github.com/mintthemoon/chaindex/config"
+	"github.com/mintthemoon/chaindex/token"
 	"github.com/mintthemoon/chaindex/trading"
+	"github.com/rs/zerolog"
 )
 
 type (
@@ -121,7 +121,11 @@ func NewInfluxdb2Store(name string, client influxdb2.Client, logger zerolog.Logg
 	return s, nil
 }
 
-func (s *Influxdb2Store) SaveTrade(trade trading.Trade) error {
+func (i *Influxdb2Store) Name() string {
+	return i.name
+}
+
+func (s *Influxdb2Store) SaveTrade(trade *trading.Trade) error {
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return err
@@ -140,19 +144,11 @@ func (s *Influxdb2Store) SaveTrade(trade trading.Trade) error {
 		trade.Timestamp(),
 	)
 	s.writer.WritePoint(p)
-	s.logger.Debug().Str("base", trade.BaseAsset()).Str("quote", trade.QuoteAsset()).Msg("saving trade")
+	s.logger.Trace().Str("base", trade.BaseAsset()).Str("quote", trade.QuoteAsset()).Msg("saving trade")
 	return nil
 }
 
-func (s *Influxdb2Store) SaveCandle(trade trading.Candle) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *Influxdb2Store) SaveTicker(trade trading.Ticker) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (s *Influxdb2Store) Trades(baseSymbol string, quoteSymbol string, start time.Time, end time.Time) ([]trading.BasicTrade, error) {
+func (s *Influxdb2Store) Trades(pair *token.Pair, start time.Time, end time.Time) ([]*trading.Trade, error) {
 	fluxQuery := fmt.Sprintf(
 		`from(bucket: "%s")
 			|> range(start: %s, stop: %s)
@@ -163,30 +159,29 @@ func (s *Influxdb2Store) Trades(baseSymbol string, quoteSymbol string, start tim
 		s.name,
 		start.Format(time.RFC3339),
 		end.Format(time.RFC3339),
-		baseSymbol,
-		quoteSymbol,
-		quoteSymbol,
-		baseSymbol,
+		pair.Base,
+		pair.Quote,
+		pair.Quote,
+		pair.Base,
 	)
 	res, err := s.reader.Query(context.Background(), fluxQuery)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("database query error")
 		return nil, err
 	}
-	trades := []trading.BasicTrade{}
+	trades := []*trading.Trade{}
 	for res.Next() {
 		tradeBaseSymbol := fmt.Sprintf("%v", res.Record().ValueByKey("base_asset"))
 		tradeBaseVolume := fmt.Sprintf("%v", res.Record().ValueByKey("base_volume"))
 		tradeQuoteSymbol := fmt.Sprintf("%v", res.Record().ValueByKey("quote_asset"))
 		tradeQuoteVolume := fmt.Sprintf("%v", res.Record().ValueByKey("quote_volume"))
-		var base, quote token.Token
-		if tradeBaseSymbol != baseSymbol {
-			if tradeQuoteSymbol != baseSymbol {
+		if tradeBaseSymbol != pair.Base {
+			if tradeQuoteSymbol != pair.Base {
 				s.logger.Error().
 					Str("trade_base", tradeBaseSymbol).
 					Str("trade_quote", tradeQuoteSymbol).
-					Str("query_base", baseSymbol).
-					Str("query_quote", quoteSymbol).
+					Str("query_base", pair.Base).
+					Str("query_quote", pair.Quote).
 					Msg("unexpected symbol in query result")
 				continue
 			}
@@ -197,7 +192,7 @@ func (s *Influxdb2Store) Trades(baseSymbol string, quoteSymbol string, start tim
 			tradeQuoteSymbol = tmpSymbol
 			tradeQuoteVolume = tmpVolume
 		}
-		base, err = token.ParseToken(fmt.Sprintf("%s%s", tradeBaseVolume, tradeBaseSymbol))
+		base, err := token.ParseToken(fmt.Sprintf("%s%s", tradeBaseVolume, tradeBaseSymbol))
 		if err != nil {
 			s.logger.Error().
 				Err(err).
@@ -206,7 +201,7 @@ func (s *Influxdb2Store) Trades(baseSymbol string, quoteSymbol string, start tim
 				Msg("failed to parse trade base token")
 			continue
 		}
-		quote, err = token.ParseToken(fmt.Sprintf("%s%s", tradeQuoteVolume, tradeQuoteSymbol))
+		quote, err := token.ParseToken(fmt.Sprintf("%s%s", tradeQuoteVolume, tradeQuoteSymbol))
 		if err != nil {
 			s.logger.Error().
 				Err(err).
@@ -219,14 +214,12 @@ func (s *Influxdb2Store) Trades(baseSymbol string, quoteSymbol string, start tim
 			s.logger.Error().Err(res.Err()).Msg("database query error")
 			continue
 		}
-		trade := trading.BasicTrade{
-			Base: base,
-			Quote: quote,
-			Time: res.Record().Time(),
+		trade := &trading.Trade{
+			Base: *base,
+			Quote: *quote,
+			Time: res.Record().Time().UTC(),
 		}
 		trades = append(trades, trade)
 	}
 	return trades, nil
 }
-
-

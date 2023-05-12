@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
@@ -20,7 +22,9 @@ import (
 type (
 	OsmosisExchange struct {
 		rpc *chain.CometRpc
-		assets map[string]assetlist.Asset
+		assets map[string]*assetlist.Asset
+		assetsSymbol map[string]*assetlist.Asset
+		pairs []*token.Pair
 		store store.Store
 		logger zerolog.Logger
 	}
@@ -42,7 +46,7 @@ func NewOsmosisExchange(url string, store store.Store, logger zerolog.Logger) (*
 		store: store,
 		logger: logger,
 	}
-	o.logger.Info().Msg("chain connected")
+	o.logger.Info().Msg("exchange connected")
 	err = o.PollAssetList()
 	return o, err
 }
@@ -74,8 +78,16 @@ func (o *OsmosisExchange) Subscribe() error {
 	return nil
 }
 
-func (o *OsmosisExchange) GetTrades(event *coretypes.ResultEvent) []trading.BasicTrade {
-	trades := []trading.BasicTrade{}
+func (o *OsmosisExchange) Pairs() ([]*token.Pair, error) {
+	return o.pairs, nil
+}
+
+func (o *OsmosisExchange) Store() store.Store {
+	return o.store
+}
+
+func (o *OsmosisExchange) GetTrades(event *coretypes.ResultEvent) []trading.Trade {
+	trades := []trading.Trade{}
 	swaps, err := ParseOsmosisTokenSwaps(event)
 	if err != nil {
 		o.logger.Error().Err(err).Msg("failed to parse swap event")
@@ -107,7 +119,12 @@ func (o *OsmosisExchange) GetTrades(event *coretypes.ResultEvent) []trading.Basi
 			o.logger.Debug().Err(err).Str("symbol", swap.Out.Symbol).Msg("failed to rebase out token")
 			continue
 		}
-		trades = append(trades, trading.BasicTrade{Base: base, Quote: quote, Time: now})
+		supportedPools := o.GetSupportedPools(inAsset, outAsset)
+		_, ok = supportedPools[swap.Pool]
+		if !ok {
+			continue
+		}
+		trades = append(trades, trading.Trade{Base: *base, Quote: *quote, Time: now})
 	}
 	return trades
 }
@@ -143,11 +160,44 @@ func (o *OsmosisExchange) PollAssetList() error {
 				time.Sleep(retryInterval)
 				continue
 			}
-			assets := make(map[string]assetlist.Asset, len(assetList.Assets))
-			for _, asset := range assetList.Assets {
-				assets[asset.Base] = asset
+			assets := make(map[string]*assetlist.Asset, len(assetList.Assets))
+			assetsSymbol := make(map[string]*assetlist.Asset, len(assetList.Assets))
+			pairs := []*token.Pair{}
+			pools := map[string]struct{}{}
+			for i, asset := range assetList.Assets {
+				assets[asset.Base] = &assetList.Assets[i]
+				if asset.Base == "ibc/D189335C6E4A68B513C10AB227BF1C1D38C746766278BA3EEB4FB14124F1D858" {
+					assetList.Assets[i].Symbol = "USDC.axl"
+				}
+				assetsSymbol[asset.Symbol] = &assetList.Assets[i]
 			}
 			o.assets = assets
+			o.assetsSymbol = assetsSymbol
+			for _, asset := range o.assets {
+				if asset.Symbol == "OSMO" {
+					continue
+				}
+				supportedPools := o.GetSupportedPools(asset)
+				for id, quoteSymbol := range supportedPools {
+					_, ok := pools[id]
+					if ok {
+						o.logger.Debug().Str("base", asset.Symbol).Str("quote", quoteSymbol).Str("id", id).Msg("skipping already present pool")
+						continue
+					}
+					quoteAsset, ok := o.assetsSymbol[quoteSymbol]
+					if !ok {
+						o.logger.Debug().Str("symbol", quoteSymbol).Msg("skipping unlisted asset pair")
+						continue
+					}
+					pair := &token.Pair{
+						Base: asset.Symbol,
+						Quote: quoteAsset.Symbol,
+					}
+					pairs = append(pairs, pair)
+					pools[id] = struct{}{}
+				}
+			}
+			o.pairs = pairs
 			o.logger.Debug().Int("num_assets", len(o.assets)).Msg("refreshed asset list")
 			time.Sleep(refreshInterval)
 		}
@@ -155,14 +205,32 @@ func (o *OsmosisExchange) PollAssetList() error {
 	return nil
 }
 
-func RebaseOsmosisAsset(t *token.Token, asset assetlist.Asset) (token.Token, error) {
+func (o *OsmosisExchange) GetSupportedPools(assets ...*assetlist.Asset) map[string]string {
+	supportedPools := map[string]string{}
+	for _, asset := range assets {
+		for _, keyword := range asset.Keywords {
+			fields := strings.Split(keyword, ":")
+			if len(fields) != 2 {
+				continue
+			}
+			_, err := strconv.Atoi(fields[1])
+			if err != nil {
+				continue
+			}
+			supportedPools[fields[1]] = fields[0]
+		}
+	}
+	return supportedPools
+}
+
+func RebaseOsmosisAsset(t *token.Token, asset *assetlist.Asset) (*token.Token, error) {
 	exponents := make(map[string]int64, len(asset.DenomUnits))
 	for _, denomUnit := range asset.DenomUnits {
 		exponents[denomUnit.Denom] = denomUnit.Exponent
 	}
 	displayExponent, ok := exponents[asset.Display]
 	if !ok {
-		return token.Token{}, fmt.Errorf("could not determine display units for %s", t.Symbol)
+		return &token.Token{}, fmt.Errorf("could not determine display units for %s", t.Symbol)
 	}
 	exponent := t.Amount.Scale() + int(displayExponent)
 	return t.Rebase(exponent, asset.Symbol), nil
@@ -203,8 +271,8 @@ func ParseOsmosisTokenSwaps(event *coretypes.ResultEvent) ([]OsmosisTokenSwap, e
 			return nil, fmt.Errorf("failed to parse output token '%s': %v", tokensOut[i], err)
 		}
 		swaps[i] = OsmosisTokenSwap{
-			In: in,
-			Out: out,
+			In: *in,
+			Out: *out,
 			Pool: tokenSwapPool[i],
 		}
 	}
