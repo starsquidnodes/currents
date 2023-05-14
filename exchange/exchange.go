@@ -93,8 +93,8 @@ func (e *ExchangeManager) FillCandles() {
 			continue
 		}
 		for _, pair := range pairs {
+			wg.Add(1)
 			go func(pair *token.Pair) {
-				wg.Add(1)
 				defer wg.Done()
 				trades, err := exchange.Store().Trades(pair, start, end)
 				if err != nil {
