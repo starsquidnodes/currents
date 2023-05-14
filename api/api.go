@@ -77,7 +77,7 @@ func (a *Api) AddRoutes() error {
 	indexTmpl, err := template.New("index.html").Parse(`<html color-mode="user">
 		<head>
 			<title>currents | Price API</title>
-			<link rel="stylesheet" href="https://unpkg.com/mvp.css@1.12/mvp.css"> 
+			<link rel="stylesheet" href="https://unpkg.com/mvp.css@1.12/mvp.css" crossorigin integrity="sha384-7msajHe9jAIT4i9ezoDS64luSrU1be0dyZK9tXwgeFLoOsCwkDK0SsbA2qvdQ/v7"> 
 		</head>
 		<body>
 			<header>
@@ -90,6 +90,7 @@ func (a *Api) AddRoutes() error {
 				</nav>
 				<h1>Price Indexer API</h1>
 				<p>Exchange price tracking simplified.</p>
+				<p><small>Built for <a href="https://kujira.app" target="_blank">Kujira</a> by <a href="https://mintthemoon.xyz" target="_blank">mintthemoon</a></small></p>
 			</header>
 			<main>
 				<hr/>

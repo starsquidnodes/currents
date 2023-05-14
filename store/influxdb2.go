@@ -72,7 +72,18 @@ func (i *Influxdb2Manager) Store(name string) (Store, error) {
 func (i *Influxdb2Manager) Health() error {
 	health, err := i.client.Health(context.Background())
 	if err != nil {
-		i.logger.Fatal().Err(err).Msg("database health check failed")
+		i.logger.Debug().Err(err).Msg("database health check failed")
+		pinged, err := i.client.Ping(context.Background())
+		if err != nil {
+			i.logger.Error().Err(err).Msg("database ping failed")
+			return err
+		}
+		if !pinged {
+			i.logger.Error().Msg("database ping failed")
+			return fmt.Errorf("influxdb2 ping check failed")
+		}
+		i.logger.Info().Str("url", i.url).Msg("database connected")
+		return nil
 	}
 	if health.Status != "pass" {
 		i.logger.Error().

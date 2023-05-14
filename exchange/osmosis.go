@@ -168,8 +168,10 @@ func (o *OsmosisExchange) PollAssetList() error {
 				assets[asset.Base] = &assetList.Assets[i]
 				if asset.Base == "ibc/D189335C6E4A68B513C10AB227BF1C1D38C746766278BA3EEB4FB14124F1D858" {
 					assetList.Assets[i].Symbol = "USDC.axl"
+					assetsSymbol["USDC.axl"] = &assetList.Assets[i]
+				} else {
+					assetsSymbol[asset.Symbol] = &assetList.Assets[i]
 				}
-				assetsSymbol[asset.Symbol] = &assetList.Assets[i]
 			}
 			o.assets = assets
 			o.assetsSymbol = assetsSymbol

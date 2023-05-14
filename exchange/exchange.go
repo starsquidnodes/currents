@@ -3,6 +3,7 @@ package exchange
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/mintthemoon/currents/config"
@@ -19,6 +20,7 @@ type (
 		CandlesInterval time.Duration
 		CandlesPeriod   time.Duration
 		Tickers         map[string]map[string]*trading.Ticker
+		lock 			sync.RWMutex
 		logger          zerolog.Logger
 	}
 
@@ -81,6 +83,7 @@ func (e *ExchangeManager) FillCandles() {
 	end := time.Now().UTC().Truncate(e.CandlesInterval)
 	start := end.Add(-e.CandlesPeriod)
 	for name, exchange := range e.Exchanges {
+		var wg sync.WaitGroup
 		pairs, err := exchange.Pairs()
 		if err != nil {
 			e.logger.Error().
@@ -90,32 +93,39 @@ func (e *ExchangeManager) FillCandles() {
 			continue
 		}
 		for _, pair := range pairs {
-			trades, err := exchange.Store().Trades(pair, start, end)
-			if err != nil {
-				e.logger.Error().
-					Err(err).
+			go func(pair *token.Pair) {
+				wg.Add(1)
+				defer wg.Done()
+				trades, err := exchange.Store().Trades(pair, start, end)
+				if err != nil {
+					e.logger.Error().
+						Err(err).
+						Str("exchange", name).
+						Str("pair", pair.String()).
+						Msg("failed to get trades for candle generation")
+					return
+				}
+				candles := trading.CandlesFromTrades(pair, trades, start, end, e.CandlesInterval)
+				if len(candles) != numCandles {
+					e.logger.Error().
+						Str("exchange", name).
+						Str("pair", pair.String()).
+						Int("expected", numCandles).
+						Int("actual", len(candles)).
+						Msg("generated an unexpected number of candles")
+					return
+				}
+				e.lock.Lock()
+				defer e.lock.Unlock()
+				e.Candles[name][pair.String()] = candles
+				e.logger.Trace().
 					Str("exchange", name).
 					Str("pair", pair.String()).
-					Msg("failed to get trades for candle generation")
-				continue
-			}
-			candles := trading.CandlesFromTrades(pair, trades, start, end, e.CandlesInterval)
-			if len(candles) != numCandles {
-				e.logger.Error().
-					Str("exchange", name).
-					Str("pair", pair.String()).
-					Int("expected", numCandles).
-					Int("actual", len(candles)).
-					Msg("generated an unexpected number of candles")
-				continue
-			}
-			e.Candles[name][pair.String()] = candles
-			e.logger.Trace().
-				Str("exchange", name).
-				Str("pair", pair.String()).
-				Int("num_candles", len(candles)).
-				Msg("generated candles")
+					Int("num_candles", len(candles)).
+					Msg("generated candles")
+			}(pair)
 		}
+		wg.Wait()
 		e.logger.Debug().
 			Str("exchange", name).
 			Msg("generated candles")
