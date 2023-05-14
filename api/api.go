@@ -90,7 +90,7 @@ func (a *Api) AddRoutes() error {
 				</nav>
 				<h1>Price Indexer API</h1>
 				<p>Exchange price tracking simplified.</p>
-				<p><small>Built for <a href="https://kujira.app" target="_blank">Kujira</a> by <a href="https://mintthemoon.xyz" target="_blank">mintthemoon</a></small></p>
+				<p><small>currents is built for <a href="https://kujira.app" target="_blank">Kujira</a> by <a href="https://mintthemoon.xyz" target="_blank">mintthemoon</a></small></p>
 			</header>
 			<main>
 				<hr/>
@@ -166,6 +166,9 @@ func (a *Api) AddRoutes() error {
 		for i, pair := range pairs {
 			pairStrings[i] = pair.String()
 		}
+		sort.Slice(pairStrings, func(i, j int) bool {
+			return pairStrings[i] < pairStrings[j]	
+		})
 		ctx.JSON(200, gin.H{"pairs": pairStrings})
 	})
 	a.engine.GET("/exchanges/:exchange/tickers", func(ctx *gin.Context) {

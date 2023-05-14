@@ -83,10 +83,10 @@ func (c *Candle) Reversed() *Candle {
 		r.Close.Quo(&one, &c.Close)
 	}
 	if c.Low.Cmp(&zero) != 0 {
-		r.Low.Quo(&one, &c.Low)
+		r.High.Quo(&one, &c.Low)
 	}
 	if c.High.Cmp(&zero) != 0 {
-		r.High.Quo(&one, &c.High)
+		r.Low.Quo(&one, &c.High)
 	}
 	return &r
 }

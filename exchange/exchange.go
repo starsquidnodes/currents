@@ -96,7 +96,15 @@ func (e *ExchangeManager) FillCandles() {
 			wg.Add(1)
 			go func(pair *token.Pair) {
 				defer wg.Done()
-				trades, err := exchange.Store().Trades(pair, start, end)
+				pairStart := start
+				existingCandles, ok := e.Candles[name][pair.String()]
+				if ok {
+					lastCandle := existingCandles[len(existingCandles)-1]
+					if lastCandle.End.Before(end) {
+						pairStart = lastCandle.End
+					}
+				}
+				trades, err := exchange.Store().Trades(pair, pairStart, end)
 				if err != nil {
 					e.logger.Error().
 						Err(err).
@@ -105,7 +113,10 @@ func (e *ExchangeManager) FillCandles() {
 						Msg("failed to get trades for candle generation")
 					return
 				}
-				candles := trading.CandlesFromTrades(pair, trades, start, end, e.CandlesInterval)
+				candles := trading.CandlesFromTrades(pair, trades, pairStart, end, e.CandlesInterval)
+				if pairStart.Compare(start) != 0 {
+					candles = append(existingCandles[len(candles):], candles...)
+				}
 				if len(candles) != numCandles {
 					e.logger.Error().
 						Str("exchange", name).

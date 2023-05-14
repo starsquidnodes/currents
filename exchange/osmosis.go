@@ -169,6 +169,9 @@ func (o *OsmosisExchange) PollAssetList() error {
 				if asset.Base == "ibc/D189335C6E4A68B513C10AB227BF1C1D38C746766278BA3EEB4FB14124F1D858" {
 					assetList.Assets[i].Symbol = "USDC.axl"
 					assetsSymbol["USDC.axl"] = &assetList.Assets[i]
+				} else if asset.Base == "ibc/8242AD24008032E457D2E12D46588FD39FB54FB29680C6C7663D296B383C37C4" {
+					assetList.Assets[i].Symbol = "USDT.axl"
+					assetsSymbol["USDT.axl"] = &assetList.Assets[i]
 				} else {
 					assetsSymbol[asset.Symbol] = &assetList.Assets[i]
 				}
