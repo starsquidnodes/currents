@@ -2,16 +2,16 @@ package trading
 
 import (
 	"time"
-	
+
 	"github.com/ericlagergren/decimal"
-	"github.com/mintthemoon/chaindex/token"
+	"github.com/mintthemoon/currents/token"
 )
 
 type (
 	Trade struct {
-		Base token.Token `json:"base"`
+		Base  token.Token `json:"base"`
 		Quote token.Token `json:"quote"`
-		Time time.Time `json:"time"`
+		Time  time.Time   `json:"time"`
 	}
 )
 

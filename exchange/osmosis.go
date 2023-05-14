@@ -10,28 +10,28 @@ import (
 	"time"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
-	"github.com/mintthemoon/chaindex/chain"
-	"github.com/mintthemoon/chaindex/config"
-	"github.com/mintthemoon/chaindex/store"
-	"github.com/mintthemoon/chaindex/token"
-	"github.com/mintthemoon/chaindex/trading"
+	"github.com/mintthemoon/currents/chain"
+	"github.com/mintthemoon/currents/config"
+	"github.com/mintthemoon/currents/store"
+	"github.com/mintthemoon/currents/token"
+	"github.com/mintthemoon/currents/trading"
 	"github.com/osmosis-labs/assetlist"
 	"github.com/rs/zerolog"
 )
 
 type (
 	OsmosisExchange struct {
-		rpc *chain.CometRpc
-		assets map[string]*assetlist.Asset
+		rpc          *chain.CometRpc
+		assets       map[string]*assetlist.Asset
 		assetsSymbol map[string]*assetlist.Asset
-		pairs []*token.Pair
-		store store.Store
-		logger zerolog.Logger
+		pairs        []*token.Pair
+		store        store.Store
+		logger       zerolog.Logger
 	}
 
 	OsmosisTokenSwap struct {
-		In token.Token
-		Out token.Token
+		In   token.Token
+		Out  token.Token
 		Pool string
 	}
 )
@@ -42,8 +42,8 @@ func NewOsmosisExchange(url string, store store.Store, logger zerolog.Logger) (*
 		return nil, err
 	}
 	o := &OsmosisExchange{
-		rpc: rpc,
-		store: store,
+		rpc:    rpc,
+		store:  store,
 		logger: logger,
 	}
 	o.logger.Info().Msg("exchange connected")
@@ -190,7 +190,7 @@ func (o *OsmosisExchange) PollAssetList() error {
 						continue
 					}
 					pair := &token.Pair{
-						Base: asset.Symbol,
+						Base:  asset.Symbol,
 						Quote: quoteAsset.Symbol,
 					}
 					pairs = append(pairs, pair)
@@ -271,8 +271,8 @@ func ParseOsmosisTokenSwaps(event *coretypes.ResultEvent) ([]OsmosisTokenSwap, e
 			return nil, fmt.Errorf("failed to parse output token '%s': %v", tokensOut[i], err)
 		}
 		swaps[i] = OsmosisTokenSwap{
-			In: *in,
-			Out: *out,
+			In:   *in,
+			Out:  *out,
 			Pool: tokenSwapPool[i],
 		}
 	}

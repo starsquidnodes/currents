@@ -5,21 +5,21 @@ import (
 	"os"
 	"time"
 
-	"github.com/mintthemoon/chaindex/config"
-	"github.com/mintthemoon/chaindex/store"
-	"github.com/mintthemoon/chaindex/token"
-	"github.com/mintthemoon/chaindex/trading"
+	"github.com/mintthemoon/currents/config"
+	"github.com/mintthemoon/currents/store"
+	"github.com/mintthemoon/currents/token"
+	"github.com/mintthemoon/currents/trading"
 	"github.com/rs/zerolog"
 )
 
 type (
 	ExchangeManager struct {
-		Exchanges map[string]Exchange
-		Candles map[string]map[string][]*trading.Candle
+		Exchanges       map[string]Exchange
+		Candles         map[string]map[string][]*trading.Candle
 		CandlesInterval time.Duration
-		CandlesPeriod time.Duration
-		Tickers map[string]map[string]*trading.Ticker
-		logger zerolog.Logger
+		CandlesPeriod   time.Duration
+		Tickers         map[string]map[string]*trading.Ticker
+		logger          zerolog.Logger
 	}
 
 	Exchange interface {
@@ -50,17 +50,17 @@ func NewExchangeManager(exchanges map[string]Exchange, logger zerolog.Logger) (*
 	}
 	candles := make(map[string]map[string][]*trading.Candle, len(exchanges))
 	tickers := make(map[string]map[string]*trading.Ticker, len(exchanges))
-	for name, _ := range exchanges {
+	for name := range exchanges {
 		candles[name] = map[string][]*trading.Candle{}
 		tickers[name] = map[string]*trading.Ticker{}
 	}
 	e := &ExchangeManager{
-		Exchanges: exchanges,
-		Candles: candles,
+		Exchanges:       exchanges,
+		Candles:         candles,
 		CandlesInterval: candlesInterval,
-		CandlesPeriod: candlesPeriod,
-		Tickers: tickers,
-		logger: logger,
+		CandlesPeriod:   candlesPeriod,
+		Tickers:         tickers,
+		logger:          logger,
 	}
 	return e, nil
 }

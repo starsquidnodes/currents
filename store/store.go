@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mintthemoon/chaindex/trading"
-	"github.com/mintthemoon/chaindex/token"
+	"github.com/mintthemoon/currents/token"
+	"github.com/mintthemoon/currents/trading"
 	"github.com/rs/zerolog"
 )
 

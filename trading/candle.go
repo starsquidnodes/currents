@@ -4,25 +4,24 @@ import (
 	"time"
 
 	"github.com/ericlagergren/decimal"
-	"github.com/mintthemoon/chaindex/token"
+	"github.com/mintthemoon/currents/token"
 )
 
 type (
 	Candle struct {
-		BaseAsset string `json:"base_asset"`
-		QuoteAsset string `json:"quote_asset"`
-		BaseVolume decimal.Big `json:"base_volume"`
+		BaseAsset   string      `json:"base_asset"`
+		QuoteAsset  string      `json:"quote_asset"`
+		BaseVolume  decimal.Big `json:"base_volume"`
 		QuoteVolume decimal.Big `json:"quote_volume"`
-		High decimal.Big `json:"high"`
-		Low decimal.Big `json:"low"`
-		Open decimal.Big `json:"open"`
-		Close decimal.Big `json:"close"`
-		Start time.Time `json:"start"`
-		End time.Time `json:"end"`
+		High        decimal.Big `json:"high"`
+		Low         decimal.Big `json:"low"`
+		Open        decimal.Big `json:"open"`
+		Close       decimal.Big `json:"close"`
+		Start       time.Time   `json:"start"`
+		End         time.Time   `json:"end"`
 	}
 
 	Candles struct {
-		
 	}
 )
 
@@ -31,10 +30,10 @@ func CandlesFromTrades(pair *token.Pair, trades []*Trade, start time.Time, end t
 	candles := make([]*Candle, numCandles)
 	for i := 0; i < numCandles; i++ {
 		candles[i] = &Candle{
-			BaseAsset: pair.Base,
+			BaseAsset:  pair.Base,
 			QuoteAsset: pair.Quote,
-			Start: start.Add(time.Duration(i) * interval),
-			End: start.Add(time.Duration(i + 1) * interval),
+			Start:      start.Add(time.Duration(i) * interval),
+			End:        start.Add(time.Duration(i+1) * interval),
 		}
 	}
 	for _, trade := range trades {
@@ -44,7 +43,7 @@ func CandlesFromTrades(pair *token.Pair, trades []*Trade, start time.Time, end t
 		if trade.Timestamp().After(end) || trade.Timestamp().Equal(end) {
 			break
 		}
-		candles[int(trade.Timestamp().Sub(start) / interval)].AddTrade(trade)
+		candles[int(trade.Timestamp().Sub(start)/interval)].AddTrade(trade)
 	}
 	return candles
 }
@@ -67,12 +66,12 @@ func (c *Candle) AddTrade(t *Trade) {
 
 func (c *Candle) Reversed() *Candle {
 	r := Candle{
-		BaseAsset: c.QuoteAsset,
-		QuoteAsset: c.BaseAsset,
-		BaseVolume: c.QuoteVolume,
+		BaseAsset:   c.QuoteAsset,
+		QuoteAsset:  c.BaseAsset,
+		BaseVolume:  c.QuoteVolume,
 		QuoteVolume: c.BaseVolume,
-		Start: c.Start,
-		End: c.End,
+		Start:       c.Start,
+		End:         c.End,
 	}
 	zero := decimal.Big{}
 	one := decimal.Big{}

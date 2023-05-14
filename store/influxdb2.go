@@ -7,24 +7,24 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/influxdata/influxdb-client-go/v2"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
-	"github.com/mintthemoon/chaindex/config"
-	"github.com/mintthemoon/chaindex/token"
-	"github.com/mintthemoon/chaindex/trading"
+	"github.com/mintthemoon/currents/config"
+	"github.com/mintthemoon/currents/token"
+	"github.com/mintthemoon/currents/trading"
 	"github.com/rs/zerolog"
 )
 
 type (
 	Influxdb2Manager struct {
 		client influxdb2.Client
-		url string
+		url    string
 		stores map[string]*Influxdb2Store
 		logger zerolog.Logger
 	}
 
 	Influxdb2Store struct {
-		name string
+		name   string
 		writer influxdb2api.WriteAPI
 		reader influxdb2api.QueryAPI
 		logger zerolog.Logger
@@ -49,7 +49,7 @@ func NewInfluxdb2Manager(url string, logger zerolog.Logger) (*Influxdb2Manager, 
 	)
 	i := &Influxdb2Manager{
 		client: client,
-		url: url,
+		url:    url,
 		stores: map[string]*Influxdb2Store{},
 		logger: influxLogger,
 	}
@@ -113,7 +113,7 @@ func NewInfluxdb2Store(name string, client influxdb2.Client, logger zerolog.Logg
 	}()
 	storeLogger.Debug().Msg("new store client")
 	s := &Influxdb2Store{
-		name: name,
+		name:   name,
 		writer: writer,
 		reader: reader,
 		logger: storeLogger,
@@ -133,12 +133,12 @@ func (s *Influxdb2Store) SaveTrade(trade *trading.Trade) error {
 	p := influxdb2.NewPoint(
 		"trade",
 		map[string]string{
-			"base_asset": trade.BaseAsset(),
+			"base_asset":  trade.BaseAsset(),
 			"quote_asset": trade.QuoteAsset(),
-			"id": id.String(),  // ensures trades have unique tags
+			"id":          id.String(), // ensures trades have unique tags
 		},
 		map[string]interface{}{
-			"base_volume": trade.BaseVolume().String(),
+			"base_volume":  trade.BaseVolume().String(),
 			"quote_volume": trade.QuoteVolume().String(),
 		},
 		trade.Timestamp(),
@@ -215,9 +215,9 @@ func (s *Influxdb2Store) Trades(pair *token.Pair, start time.Time, end time.Time
 			continue
 		}
 		trade := &trading.Trade{
-			Base: *base,
+			Base:  *base,
 			Quote: *quote,
-			Time: res.Record().Time().UTC(),
+			Time:  res.Record().Time().UTC(),
 		}
 		trades = append(trades, trade)
 	}

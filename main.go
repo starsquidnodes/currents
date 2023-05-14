@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mintthemoon/chaindex/api"
-	"github.com/mintthemoon/chaindex/config"
-	"github.com/mintthemoon/chaindex/exchange"
-	"github.com/mintthemoon/chaindex/store"
+	"github.com/mintthemoon/currents/api"
+	"github.com/mintthemoon/currents/config"
+	"github.com/mintthemoon/currents/exchange"
+	"github.com/mintthemoon/currents/store"
 	"github.com/rs/zerolog"
 )
 
