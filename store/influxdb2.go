@@ -72,7 +72,7 @@ func (i *Influxdb2Manager) Store(name string) (Store, error) {
 func (i *Influxdb2Manager) Health() error {
 	health, err := i.client.Health(context.Background())
 	if err != nil {
-		i.logger.Debug().Err(err).Msg("database health check failed")
+		i.logger.Debug().Err(err).Msg("database health check failed (expected if using influxdb cloud)")
 		pinged, err := i.client.Ping(context.Background())
 		if err != nil {
 			i.logger.Error().Err(err).Msg("database ping failed")
@@ -144,18 +144,18 @@ func (s *Influxdb2Store) SaveTrade(trade *trading.Trade) error {
 	p := influxdb2.NewPoint(
 		"trade",
 		map[string]string{
-			"base_asset":  trade.BaseAsset(),
-			"quote_asset": trade.QuoteAsset(),
+			"base_asset":  trade.Base.Symbol,
+			"quote_asset": trade.Quote.Symbol,
 			"id":          id.String(), // ensures trades have unique tags
 		},
 		map[string]interface{}{
-			"base_volume":  trade.BaseVolume().String(),
-			"quote_volume": trade.QuoteVolume().String(),
+			"base_volume":  trade.Base.Amount.String(),
+			"quote_volume": trade.Quote.Amount.String(),
 		},
-		trade.Timestamp(),
+		trade.Time,
 	)
 	s.writer.WritePoint(p)
-	s.logger.Trace().Str("base", trade.BaseAsset()).Str("quote", trade.QuoteAsset()).Msg("saving trade")
+	s.logger.Trace().Str("base", trade.Base.Symbol).Str("quote", trade.Quote.Symbol).Msg("saving trade")
 	return nil
 }
 
@@ -165,6 +165,8 @@ func (s *Influxdb2Store) Trades(pair *token.Pair, start time.Time, end time.Time
 			|> range(start: %s, stop: %s)
 			|> filter(fn: (r) => r._measurement == "trade" and ((r.base_asset == "%s" and r.quote_asset == "%s") or (r.base_asset == "%s" and r.quote_asset == "%s")))
 			|> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+			|> group()
+			|> sort(columns: ["_time"], desc: true)
 			|> yield(name: "trade")
 		`,
 		s.name,

@@ -2,7 +2,9 @@ package api
 
 import (
 	"html/template"
+	"math"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +13,10 @@ import (
 	"github.com/mintthemoon/currents/token"
 	"github.com/mintthemoon/currents/trading"
 	"github.com/rs/zerolog"
+)
+
+const (
+	CandlesPerPage = 500
 )
 
 type Api struct {
@@ -267,7 +273,19 @@ func (a *Api) AddRoutes() error {
 				candles[i] = candle.Reversed()
 			}
 		}
-		ctx.JSON(200, gin.H{"candles": candles})
+		numPages := int(math.Ceil(float64(len(candles)) / CandlesPerPage))
+		page, err := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+		if err != nil || page > numPages || page < 1 {
+			ctx.JSON(400, gin.H{"error": "invalid page"})
+			return
+		}
+		pageStart := (page - 1) * CandlesPerPage
+		pageEnd := pageStart + CandlesPerPage
+		if pageEnd > len(candles) {
+			pageEnd = len(candles)
+		}
+		pagedCandles := gin.H{"page": gin.H{"current": page, "total": numPages}, "candles": candles[pageStart:pageEnd]}
+		ctx.JSON(200, pagedCandles)
 	})
 	a.engine.GET("/exchanges/:exchange/trades/:base/:quote", func(ctx *gin.Context) {
 		exchangeName := ctx.Param("exchange")
@@ -285,8 +303,23 @@ func (a *Api) AddRoutes() error {
 			Base:  ctx.Param("base"),
 			Quote: ctx.Param("quote"),
 		}
-		now := time.Now()
-		trades, err := store.Trades(pair, now.Add(-time.Hour), now)
+		period, err := time.ParseDuration(ctx.DefaultQuery("period", "1h"))
+		if err != nil {
+			ctx.JSON(400, gin.H{"error": "invalid period"})
+			return
+		}
+		endStr := ctx.DefaultQuery("end", "now")
+		var end time.Time
+		if endStr == "now" {
+			end = time.Now()
+		} else {
+			end, err = time.Parse(time.RFC3339, endStr)
+			if err != nil {
+				ctx.JSON(400, gin.H{"error": "invalid end"})
+				return
+			}
+		}
+		trades, err := store.Trades(pair, end.Add(-period), end)
 		if err != nil {
 			ctx.JSON(500, gin.H{"error": err.Error()})
 			return

@@ -98,12 +98,14 @@ func (e *ExchangeManager) FillCandles() {
 				defer wg.Done()
 				pairStart := start
 				existingCandles, ok := e.Candles[name][pair.String()]
-				if ok {
-					lastCandle := existingCandles[len(existingCandles)-1]
-					if lastCandle.End.Before(end) {
-						pairStart = lastCandle.End
+                if ok && len(existingCandles) > 0 {
+                    latestCandle := existingCandles[0]
+                    if latestCandle.Start.After(start) {
+                        pairStart = latestCandle.End
+                    } else {
+						existingCandles = []*trading.Candle{}
 					}
-				}
+                }
 				trades, err := exchange.Store().Trades(pair, pairStart, end)
 				if err != nil {
 					e.logger.Error().
@@ -114,9 +116,10 @@ func (e *ExchangeManager) FillCandles() {
 					return
 				}
 				candles := trading.CandlesFromTrades(pair, trades, pairStart, end, e.CandlesInterval)
-				if pairStart.Compare(start) != 0 {
-					candles = append(existingCandles[len(candles):], candles...)
-				}
+				numNewCandles := len(candles)
+				if len(existingCandles) > 0 && numNewCandles > 0 && existingCandles[0].End.Equal(candles[numNewCandles - 1].Start) {
+                    candles = append(candles, existingCandles[:len(existingCandles) - numNewCandles]...)
+                }
 				if len(candles) != numCandles {
 					e.logger.Error().
 						Str("exchange", name).
@@ -133,6 +136,7 @@ func (e *ExchangeManager) FillCandles() {
 					Str("exchange", name).
 					Str("pair", pair.String()).
 					Int("num_candles", len(candles)).
+					Int("new_candles", numNewCandles).
 					Msg("generated candles")
 			}(pair)
 		}
@@ -145,7 +149,7 @@ func (e *ExchangeManager) FillCandles() {
 
 func (e *ExchangeManager) FillTickers() {
 	end := time.Now().UTC().Truncate(e.CandlesInterval)
-	start := end.Add(-24 * time.Hour)
+	start := end.Add(-24  * time.Hour)
 	for name, exchange := range e.Exchanges {
 		exchangeCandles, ok := e.Candles[name]
 		if !ok {
@@ -171,11 +175,7 @@ func (e *ExchangeManager) FillTickers() {
 					Msg("failed to get candles for ticker generation")
 				continue
 			}
-			i := 0
-			for candles[i].Start.Before(start) {
-				i++
-			}
-			ticker := trading.TickerFromCandles(candles[i:])
+			ticker := trading.TickerFromCandles(candles, start, end)
 			e.Tickers[name][pair.String()] = ticker
 			e.logger.Trace().
 				Str("exchange", name).

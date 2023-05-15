@@ -15,25 +15,28 @@ type Ticker struct {
 	Time time.Time `json:"time"`
 }
 
-func TickerFromCandles(candles []*Candle) *Ticker {
+func TickerFromCandles(candles []*Candle, start time.Time, end time.Time) *Ticker {
 	if len(candles) == 0 {
 		return &Ticker{}
 	}
 	ticker := &Ticker{
 		BaseAsset: candles[0].BaseAsset,
 		QuoteAsset: candles[0].QuoteAsset,
-		Time: candles[len(candles) - 1].End,
+		Time: candles[0].End,
 	}
-	i := len(candles) - 1
-	for ; i >= 0; i-- {
-		if candles[i].Open.Cmp(&decimal.Big{}) != 0 {
-			ticker.Price = candles[i].Close
+	zero := &decimal.Big{}
+	for _, candle := range candles {
+		if candle.End.After(end) {
+			continue
+		}
+		if candle.Start.Before(start) {
 			break
 		}
-	}
-	for ; i >= 0; i-- {
-		ticker.BaseVolume.Add(&ticker.BaseVolume, &candles[i].BaseVolume)
-		ticker.QuoteVolume.Add(&ticker.QuoteVolume, &candles[i].QuoteVolume)
+		if ticker.Price.Cmp(zero) == 0 && candle.Close.Cmp(zero) != 0 {
+			ticker.Price = candle.Close
+		}
+		ticker.BaseVolume.Add(&ticker.BaseVolume, &candle.BaseVolume)
+		ticker.QuoteVolume.Add(&ticker.QuoteVolume, &candle.QuoteVolume)
 	}
 	return ticker
 }

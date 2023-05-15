@@ -20,48 +20,63 @@ type (
 		Start       time.Time   `json:"start"`
 		End         time.Time   `json:"end"`
 	}
-
-	Candles struct {
-	}
 )
 
 func CandlesFromTrades(pair *token.Pair, trades []*Trade, start time.Time, end time.Time, interval time.Duration) []*Candle {
 	numCandles := int(end.Sub(start) / interval)
 	candles := make([]*Candle, numCandles)
-	for i := 0; i < numCandles; i++ {
-		candles[i] = &Candle{
+	for i := numCandles; i > 0; i-- {
+		candles[numCandles - i] = &Candle{
 			BaseAsset:  pair.Base,
 			QuoteAsset: pair.Quote,
-			Start:      start.Add(time.Duration(i) * interval),
-			End:        start.Add(time.Duration(i+1) * interval),
+			Start:      start.Add(time.Duration(i - 1) * interval),
+			End:        start.Add(time.Duration(i) * interval),
 		}
 	}
-	for _, trade := range trades {
-		if trade.Timestamp().Before(start) {
-			continue
-		}
-		if trade.Timestamp().After(end) || trade.Timestamp().Equal(end) {
+	if len(trades) == 0 {
+		return candles
+	}
+	i := 0
+	var trade *Trade
+	for ; i < len(trades); i++ {
+		trade = trades[i]
+		if trade.Time.Before(candles[0].End) {
 			break
 		}
-		candles[int(trade.Timestamp().Sub(start)/interval)].AddTrade(trade)
+	}
+	for j, candle := range candles {
+		var high, low, open, close *decimal.Big
+		baseVol := &decimal.Big{}
+		quoteVol := &decimal.Big{}
+		for ; i < len(trades); i++ {
+			trade = trades[i]
+			if trade.Time.Compare(candle.Start) <= 0 {
+				break
+			}
+			open = trade.Price()
+			if close == nil {
+				high = open
+				low = open
+				close = open
+			} else if open.Cmp(high) > 0 {
+				high = open
+			} else if open.Cmp(low) < 0 {
+				low = open
+			}
+			baseVol.Add(baseVol, &trade.Base.Amount)
+			quoteVol.Add(quoteVol, &trade.Quote.Amount)
+		}
+		if close == nil {
+			continue
+		}
+		candles[j].High = *high
+		candles[j].Low = *low
+		candles[j].Open = *open
+		candles[j].Close = *close
+		candles[j].BaseVolume = *baseVol
+		candles[j].QuoteVolume = *quoteVol
 	}
 	return candles
-}
-
-func (c *Candle) AddTrade(t *Trade) {
-	if (c.Open.Cmp(&decimal.Big{}) == 0) {
-		c.Open = *t.Price()
-		c.Low = *t.Price()
-	}
-	c.Close = *t.Price()
-	if c.High.Cmp(t.Price()) < 0 {
-		c.High = *t.Price()
-	}
-	if c.Low.Cmp(t.Price()) > 0 {
-		c.Low = *t.Price()
-	}
-	c.BaseVolume.Add(&c.BaseVolume, t.BaseVolume())
-	c.QuoteVolume.Add(&c.QuoteVolume, t.QuoteVolume())
 }
 
 func (c *Candle) Reversed() *Candle {

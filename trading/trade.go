@@ -15,26 +15,6 @@ type (
 	}
 )
 
-func (b *Trade) BaseAsset() string {
-	return b.Base.Symbol
-}
-
-func (b *Trade) QuoteAsset() string {
-	return b.Quote.Symbol
-}
-
-func (b *Trade) BaseVolume() *decimal.Big {
-	return &b.Base.Amount
-}
-
-func (b *Trade) QuoteVolume() *decimal.Big {
-	return &b.Quote.Amount
-}
-
-func (b *Trade) Timestamp() time.Time {
-	return b.Time
-}
-
 func (b *Trade) Price() *decimal.Big {
 	price := decimal.Big{}
 	price.Quo(&b.Quote.Amount, &b.Base.Amount)
