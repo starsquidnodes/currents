@@ -64,11 +64,6 @@ func main() {
 			logger.Error().Err(err).Str("exchange", exchangeName).Msg("failed to initialize exchange")
 			continue
 		}
-		err = exchange.Subscribe()
-		if err != nil {
-			logger.Error().Err(err).Msg("failed to subscribe to exchange")
-			continue
-		}
 		exchanges[exchangeName] = exchange
 	}
 	exchangeManager, err := exchange.NewExchangeManager(exchanges, logger)

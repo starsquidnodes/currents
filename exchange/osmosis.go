@@ -26,6 +26,8 @@ type (
 		assetsSymbol map[string]*assetlist.Asset
 		pairs        []*token.Pair
 		store        store.Store
+		tradeSubscriptions []chan *trading.Trade
+		pairSubscriptions []chan []*token.Pair
 		logger       zerolog.Logger
 	}
 
@@ -59,7 +61,7 @@ func (o *OsmosisExchange) DisplayName() string {
 	return "Osmosis"
 }
 
-func (o *OsmosisExchange) Subscribe() error {
+func (o *OsmosisExchange) Start() error {
 	channel, err := o.rpc.Subscribe("tm.event='Tx' AND token_swapped.module='gamm'")
 	if err != nil {
 		return err
@@ -71,11 +73,25 @@ func (o *OsmosisExchange) Subscribe() error {
 			trades := o.GetTrades(&event)
 			for _, trade := range trades {
 				o.logger.Debug().Str("base", trade.Base.String()).Str("quote", trade.Quote.String()).Msg("trade")
-				o.store.SaveTrade(&trade)
+				for _, subscription := range o.tradeSubscriptions {
+					subscription <- &trade
+				}
 			}
 		}
 	}()
 	return nil
+}
+
+func (o *OsmosisExchange) SubscribeTrades() chan *trading.Trade {
+	channel := make(chan *trading.Trade)
+	o.tradeSubscriptions = append(o.tradeSubscriptions, channel)
+	return channel
+}
+
+func (o *OsmosisExchange) SubscribePairs() chan []*token.Pair {
+	channel := make(chan []*token.Pair)
+	o.pairSubscriptions = append(o.pairSubscriptions, channel)
+	return channel
 }
 
 func (o *OsmosisExchange) Pairs() ([]*token.Pair, error) {
@@ -97,7 +113,7 @@ func (o *OsmosisExchange) GetTrades(event *coretypes.ResultEvent) []trading.Trad
 		o.logger.Warn().Msg("cannot process trades when asset list is empty")
 		return trades
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	for _, swap := range swaps {
 		inAsset, ok := o.assets[swap.In.Symbol]
 		if !ok {
@@ -201,6 +217,9 @@ func (o *OsmosisExchange) PollAssetList() error {
 					pairs = append(pairs, pair)
 					pools[id] = struct{}{}
 				}
+			}
+			for _, subscription := range o.pairSubscriptions {
+				subscription <- pairs
 			}
 			o.pairs = pairs
 			o.logger.Debug().Int("num_assets", len(o.assets)).Msg("refreshed asset list")

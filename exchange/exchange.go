@@ -3,7 +3,6 @@ package exchange
 import (
 	"fmt"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/mintthemoon/currents/config"
@@ -16,20 +15,31 @@ import (
 type (
 	ExchangeManager struct {
 		Exchanges       map[string]Exchange
-		Candles         map[string]map[string][]*trading.Candle
 		CandlesInterval time.Duration
 		CandlesPeriod   time.Duration
-		Tickers         map[string]map[string]*trading.Ticker
-		lock 			sync.RWMutex
+		data 		  	map[string]*ExchangeData
 		logger          zerolog.Logger
 	}
 
 	Exchange interface {
 		Name() string
 		DisplayName() string
-		Subscribe() error
+		Start() error
 		Pairs() ([]*token.Pair, error)
 		Store() store.Store
+		SubscribeTrades() chan *trading.Trade
+		SubscribePairs() chan []*token.Pair
+	}
+
+	ExchangeData struct {
+		pairs chan []*token.Pair
+		trades chan *trading.Trade
+		candles map[string]*trading.Candles
+		candlesInterval time.Duration
+		candlesPeriod time.Duration
+		tickers map[string]*trading.Ticker
+		db store.Store
+		logger zerolog.Logger
 	}
 )
 
@@ -50,142 +60,53 @@ func NewExchangeManager(exchanges map[string]Exchange, logger zerolog.Logger) (*
 	if err != nil {
 		return nil, err
 	}
-	candles := make(map[string]map[string][]*trading.Candle, len(exchanges))
-	tickers := make(map[string]map[string]*trading.Ticker, len(exchanges))
-	for name := range exchanges {
-		candles[name] = map[string][]*trading.Candle{}
-		tickers[name] = map[string]*trading.Ticker{}
-	}
 	e := &ExchangeManager{
 		Exchanges:       exchanges,
-		Candles:         candles,
 		CandlesInterval: candlesInterval,
 		CandlesPeriod:   candlesPeriod,
-		Tickers:         tickers,
+		data: map[string]*ExchangeData{},
 		logger:          logger,
 	}
 	return e, nil
 }
 
 func (e *ExchangeManager) Start() {
-	go func() {
-		for {
-			now := time.Now()
-			e.FillCandles()
-			e.FillTickers()
-			time.Sleep(time.Until(now.Add(e.CandlesInterval).Truncate(e.CandlesInterval)))
-		}
-	}()
-}
-
-func (e *ExchangeManager) FillCandles() {
-	numCandles := int(e.CandlesPeriod / e.CandlesInterval)
-	end := time.Now().UTC().Truncate(e.CandlesInterval)
-	start := end.Add(-e.CandlesPeriod)
-	for name, exchange := range e.Exchanges {
-		var wg sync.WaitGroup
-		pairs, err := exchange.Pairs()
+	for _, exchange := range e.Exchanges {
+		trades := exchange.SubscribeTrades()
+		pairs := exchange.SubscribePairs()
+		exchangeData := NewExchangeData(pairs, trades, e.CandlesInterval, e.CandlesPeriod, exchange.Store(), e.logger)
+		e.data[exchange.Name()] = exchangeData
+		exchangeData.Start()
+		err := exchange.Start()
 		if err != nil {
-			e.logger.Error().
-				Err(err).
-				Str("exchange", name).
-				Msg("failed to get pairs for candle generation")
+			e.logger.Error().Err(err).Str("exchange", exchange.Name()).Msg("failed to start exchange")
 			continue
 		}
-		for _, pair := range pairs {
-			wg.Add(1)
-			go func(pair *token.Pair) {
-				defer wg.Done()
-				pairStart := start
-				existingCandles, ok := e.Candles[name][pair.String()]
-                if ok && len(existingCandles) > 0 {
-                    latestCandle := existingCandles[0]
-                    if latestCandle.Start.After(start) {
-                        pairStart = latestCandle.End
-                    } else {
-						existingCandles = []*trading.Candle{}
-					}
-                }
-				trades, err := exchange.Store().Trades(pair, pairStart, end)
-				if err != nil {
-					e.logger.Error().
-						Err(err).
-						Str("exchange", name).
-						Str("pair", pair.String()).
-						Msg("failed to get trades for candle generation")
-					return
-				}
-				candles := trading.CandlesFromTrades(pair, trades, pairStart, end, e.CandlesInterval)
-				numNewCandles := len(candles)
-				if len(existingCandles) > 0 && numNewCandles > 0 && existingCandles[0].End.Equal(candles[numNewCandles - 1].Start) {
-                    candles = append(candles, existingCandles[:len(existingCandles) - numNewCandles]...)
-                }
-				if len(candles) != numCandles {
-					e.logger.Error().
-						Str("exchange", name).
-						Str("pair", pair.String()).
-						Int("expected", numCandles).
-						Int("actual", len(candles)).
-						Msg("generated an unexpected number of candles")
-					return
-				}
-				e.lock.Lock()
-				defer e.lock.Unlock()
-				e.Candles[name][pair.String()] = candles
-				e.logger.Trace().
-					Str("exchange", name).
-					Str("pair", pair.String()).
-					Int("num_candles", len(candles)).
-					Int("new_candles", numNewCandles).
-					Msg("generated candles")
-			}(pair)
-		}
-		wg.Wait()
-		e.logger.Debug().
-			Str("exchange", name).
-			Msg("generated candles")
 	}
 }
 
-func (e *ExchangeManager) FillTickers() {
-	end := time.Now().UTC().Truncate(e.CandlesInterval)
-	start := end.Add(-24  * time.Hour)
-	for name, exchange := range e.Exchanges {
-		exchangeCandles, ok := e.Candles[name]
-		if !ok {
-			e.logger.Error().
-				Str("exchange", name).
-				Msg("failed to get candles for ticker generation")
-			continue
-		}
-		pairs, err := exchange.Pairs()
-		if err != nil {
-			e.logger.Error().
-				Err(err).
-				Str("exchange", name).
-				Msg("failed to get pairs for candle generation")
-			continue
-		}
-		for _, pair := range pairs {
-			candles, ok := exchangeCandles[pair.String()]
-			if !ok {
-				e.logger.Error().
-					Str("exchange", name).
-					Str("pair", pair.String()).
-					Msg("failed to get candles for ticker generation")
-				continue
-			}
-			ticker := trading.TickerFromCandles(candles, start, end)
-			e.Tickers[name][pair.String()] = ticker
-			e.logger.Trace().
-				Str("exchange", name).
-				Str("pair", pair.String()).
-				Msg("generated ticker")
-		}
-		e.logger.Debug().
-			Str("exchange", name).
-			Msg("generated tickers")
+func (e *ExchangeManager) Candles(exchange string, pair *token.Pair) (*trading.Candles, error) {
+	exchangeData, ok := e.data[exchange]
+	if !ok {
+		return nil, fmt.Errorf("exchange not found")
 	}
+	return exchangeData.Candles(pair)
+}
+
+func (e *ExchangeManager) Tickers(exchange string) ([]*trading.Ticker, error) {
+	exchangeData, ok := e.data[exchange]
+	if !ok {
+		return nil, fmt.Errorf("exchange not found")
+	}
+	return exchangeData.Tickers()
+}
+
+func (e *ExchangeManager) Ticker(exchange string, pair *token.Pair) (*trading.Ticker, error) {
+	exchangeData, ok := e.data[exchange]
+	if !ok {
+		return nil, fmt.Errorf("exchange not found")
+	}
+	return exchangeData.Ticker(pair)
 }
 
 func NewExchange(name string, store store.Store, logger zerolog.Logger) (Exchange, error) {
@@ -196,4 +117,114 @@ func NewExchange(name string, store store.Store, logger zerolog.Logger) (Exchang
 	default:
 		return nil, fmt.Errorf("unsupported exchange: %s", name)
 	}
+}
+
+func NewExchangeData(pairs chan []*token.Pair, trades chan *trading.Trade, candlesInterval time.Duration, candlesPeriod time.Duration, db store.Store, logger zerolog.Logger) *ExchangeData {
+	return &ExchangeData{
+		pairs: pairs,
+		trades: trades,
+		candles: map[string]*trading.Candles{},
+		candlesInterval: candlesInterval,
+		candlesPeriod: candlesPeriod,
+		tickers: map[string]*trading.Ticker{},
+		db: db,
+		logger: logger,
+	}
+}
+
+func (e *ExchangeData) Start() {
+	go e.SubscribePairs()
+	go e.SubscribeTrades()
+	go e.FillCandles()
+}
+
+func (e *ExchangeData) SubscribePairs() {
+	for pairs := range e.pairs {
+		e.SetPairs(pairs)
+	}
+}
+
+func (e *ExchangeData) SubscribeTrades() {
+	for trade := range e.trades {
+		e.db.SaveTrade(trade)
+		pair := trade.Pair()
+		candles, ok := e.candles[pair.String()]
+		if !ok {
+			candles, ok = e.candles[pair.Reversed().String()]
+			if !ok {
+				e.logger.Error().Str("pair", pair.String()).Msg("pair not found")
+				continue
+			}
+			trade = trade.Reversed()
+			pair = pair.Reversed()
+		}
+		err := candles.PushTrade(trade)
+		if err != nil {
+			e.logger.Error().
+				Err(err).
+				Str("pair", pair.String()).
+				Time("trade_time", trade.Time).
+				Msg("failed to add trade to candles")
+			continue
+		}
+		e.tickers[pair.String()] = candles.Ticker()
+	}
+}
+
+func (e *ExchangeData) FillCandles() {
+	for {
+		end := time.Now().UTC().Truncate(e.candlesInterval).Add(e.candlesInterval)
+		for symbol, candles := range e.candles {
+			candles.Extend(end)
+			e.tickers[symbol] = candles.Ticker()
+		}
+		e.logger.Debug().Time("end", end).Msg("filled candles")
+		time.Sleep(time.Until(time.Now().Truncate(e.candlesInterval).Add(e.candlesInterval)))
+	}
+}
+
+func (e *ExchangeData) SetPairs(pairs []*token.Pair) {
+	candlesEnd := time.Now().UTC().Truncate(e.candlesInterval).Add(e.candlesInterval)
+	for _, pair := range pairs {
+		_, ok := e.candles[pair.String()]
+		if !ok {
+			candles, err := store.CandlesFromStore(e.db, pair, candlesEnd, e.candlesPeriod, e.candlesInterval)
+			if err != nil {
+				e.logger.Error().Err(err).Str("pair", pair.String()).Msg("failed to load candles from store")
+				continue
+			}
+			e.candles[pair.String()] = candles
+			e.tickers[pair.String()] = candles.Ticker()
+			e.logger.Trace().Str("pair", pair.String()).Msg("new pair")
+		}
+	}
+	e.logger.Debug().Int("num_pairs", len(pairs)).Msg("updated pairs")
+}
+
+func (e *ExchangeData) Candles(pair *token.Pair) (*trading.Candles, error) {
+	candles, ok := e.candles[pair.String()]
+	if !ok {
+		return nil, fmt.Errorf("candles not found for pair")
+	}
+	return candles, nil
+}
+
+func (e *ExchangeData) Tickers() ([]*trading.Ticker, error) {
+	tickers := []*trading.Ticker{}
+	for _, ticker := range e.tickers {
+		tickers = append(tickers, ticker)
+	}
+	return tickers, nil
+}
+
+func (e *ExchangeData) Ticker(pair *token.Pair) (*trading.Ticker, error) {
+	ticker, ok := e.tickers[pair.String()]
+	if !ok {
+		ticker, ok = e.tickers[pair.Reversed().String()]
+		if !ok {
+			return nil, fmt.Errorf("ticker not found for pair")
+		}
+		ticker = ticker.Reversed()
+	}
+	return ticker, nil
 }

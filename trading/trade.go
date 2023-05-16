@@ -15,8 +15,23 @@ type (
 	}
 )
 
-func (b *Trade) Price() *decimal.Big {
+func (t *Trade) Price() *decimal.Big {
 	price := decimal.Big{}
-	price.Quo(&b.Quote.Amount, &b.Base.Amount)
+	price.Quo(&t.Quote.Amount, &t.Base.Amount)
 	return &price
+}
+
+func (t *Trade) Pair() *token.Pair {
+	return &token.Pair{
+		Base:  t.Base.Symbol,
+		Quote: t.Quote.Symbol,
+	}
+}
+
+func (t *Trade) Reversed() *Trade {
+	return &Trade{
+		Base:  t.Quote,
+		Quote: t.Base,
+		Time:  t.Time,
+	}
 }

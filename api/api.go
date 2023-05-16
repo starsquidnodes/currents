@@ -11,7 +11,6 @@ import (
 	"github.com/mintthemoon/currents/exchange"
 	"github.com/mintthemoon/currents/store"
 	"github.com/mintthemoon/currents/token"
-	"github.com/mintthemoon/currents/trading"
 	"github.com/rs/zerolog"
 )
 
@@ -184,21 +183,15 @@ func (a *Api) AddRoutes() error {
 			ctx.JSON(404, gin.H{"error": "exchange not found"})
 			return
 		}
-		exchangeTickers, ok := a.exchangeManager.Tickers[exchangeName]
-		if !ok {
+		tickers, err := a.exchangeManager.Tickers(exchangeName)
+		if err != nil {
 			ctx.JSON(404, gin.H{"error": "exchange tickers not found"})
 			return
 		}
-		tickersList := make([]*trading.Ticker, len(exchangeTickers))
-		i := 0
-		for _, ticker := range exchangeTickers {
-			tickersList[i] = ticker
-			i++
-		}
-		sort.Slice(tickersList, func(i, j int) bool {
-			return tickersList[i].BaseAsset < tickersList[j].BaseAsset
+		sort.Slice(tickers, func(i, j int) bool {
+			return tickers[i].BaseAsset < tickers[j].BaseAsset
 		})
-		ctx.JSON(200, gin.H{"tickers": tickersList})
+		ctx.JSON(200, gin.H{"tickers": tickers})
 	})
 	a.engine.GET("/exchanges/:exchange/candles", func(ctx *gin.Context) {
 		exchangeName := ctx.Param("exchange")
@@ -229,19 +222,10 @@ func (a *Api) AddRoutes() error {
 			Base:  ctx.Param("base"),
 			Quote: ctx.Param("quote"),
 		}
-		exchangeTickers, ok := a.exchangeManager.Tickers[exchangeName]
-		if !ok {
-			ctx.JSON(404, gin.H{"error": "exchange tickers not found"})
+		ticker, err := a.exchangeManager.Ticker(exchangeName, pair)
+		if err != nil {
+			ctx.JSON(404, gin.H{"error": "tickers not found"})
 			return
-		}
-		ticker, ok := exchangeTickers[pair.String()]
-		if !ok {
-			reversedTicker, ok := exchangeTickers[pair.Reversed().String()]
-			if !ok {
-				ctx.JSON(404, gin.H{"error": "pair ticker not found"})
-				return
-			}
-			ticker = reversedTicker.Reversed()
 		}
 		ctx.JSON(200, gin.H{"ticker": ticker})
 	})
@@ -256,35 +240,35 @@ func (a *Api) AddRoutes() error {
 			Base:  ctx.Param("base"),
 			Quote: ctx.Param("quote"),
 		}
-		exchangeCandles, ok := a.exchangeManager.Candles[exchangeName]
-		if !ok {
-			ctx.JSON(404, gin.H{"error": "exchange candles not found"})
-			return
-		}
-		candles, ok := exchangeCandles[pair.String()]
-		if !ok {
-			reversedCandles, ok := exchangeCandles[pair.Reversed().String()]
-			if !ok {
-				ctx.JSON(404, gin.H{"error": "pair candles not found"})
+		candles, err := a.exchangeManager.Candles(exchangeName, pair)
+		isReversed := false
+		if err != nil {
+			candles, err = a.exchangeManager.Candles(exchangeName, pair.Reversed())
+			if err != nil {
+				ctx.JSON(404, gin.H{"error": "candles not found"})
 				return
 			}
-			candles = make([]*trading.Candle, len(reversedCandles))
-			for i, candle := range reversedCandles {
-				candles[i] = candle.Reversed()
-			}
+			isReversed = true
 		}
-		numPages := int(math.Ceil(float64(len(candles)) / CandlesPerPage))
+		numCandles := candles.Len() - 1
+		numPages := int(math.Ceil(float64(numCandles) / CandlesPerPage))
 		page, err := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 		if err != nil || page > numPages || page < 1 {
 			ctx.JSON(400, gin.H{"error": "invalid page"})
 			return
 		}
-		pageStart := (page - 1) * CandlesPerPage
-		pageEnd := pageStart + CandlesPerPage
-		if pageEnd > len(candles) {
-			pageEnd = len(candles)
+		pageStart := (page - 1) * CandlesPerPage + 1
+		pageEnd := pageStart + CandlesPerPage + 1
+		if pageEnd > numCandles {
+			pageEnd = numCandles
 		}
-		pagedCandles := gin.H{"page": gin.H{"current": page, "total": numPages}, "candles": candles[pageStart:pageEnd]}
+		candlesList := candles.ListRange(pageStart, pageEnd)
+		if isReversed {
+			for i, candle := range candlesList {
+				candlesList[i] = candle.Reversed()
+			}
+		}
+		pagedCandles := gin.H{"page": gin.H{"current": page, "total": numPages}, "candles": candlesList}
 		ctx.JSON(200, pagedCandles)
 	})
 	a.engine.GET("/exchanges/:exchange/trades/:base/:quote", func(ctx *gin.Context) {
