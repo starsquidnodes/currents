@@ -110,12 +110,8 @@ func (i *Influxdb2Manager) Close() {
 
 func NewInfluxdb2Store(name string, client influxdb2.Client, logger zerolog.Logger) (*Influxdb2Store, error) {
 	storeLogger := logger.With().Str("store", name).Logger()
-	organization := os.Getenv(config.EnvInfluxdbOrganization)
-	if organization == "" {
-		organization = config.DefaultInfluxdbOrganization
-	}
-	writer := client.WriteAPI(organization, name)
-	reader := client.QueryAPI(organization)
+	writer := client.WriteAPI(config.Cfg.InfluxdbOrganization, name)
+	reader := client.QueryAPI(config.Cfg.InfluxdbOrganization)
 	errorsChannel := writer.Errors()
 	go func() {
 		for err := range errorsChannel {

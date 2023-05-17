@@ -1,15 +1,17 @@
 package config
 
-const (
-	DefaultExchanges                       = "osmosis"
-	DefaultLogLevel                        = "info"
-	DefaultStoreBackend                    = "influxdb2"
-	DefaultStoreUrl                        = "http://localhost:8086"
-	DefaultInfluxdbOrganization            = "currents"
-	DefaultOsmosisAssetlistJsonUrl         = "https://raw.githubusercontent.com/osmosis-labs/assetlists/main/osmosis-1/osmosis-1.assetlist.json"
-	DefaultOsmosisAssetlistRefreshInterval = "15m"
-	DefaultOsmosisAssetlistRetryInterval   = "30s"
-	DefaultTradesMaxAge                    = "48h"
-	DefaultCandlesInterval                 = "1m"
-	DefaultCandlesPeriod                   = "24h"
-)
+func DefaultConfig() *StringConfig {
+	return &StringConfig{
+		Exchanges:                         "osmosis",
+		LogLevel:                          "info",
+		StoreBackend:                      "influxdb2",
+		StoreUrl:                          "http://localhost:8086",
+		InfluxdbOrganization:              "currents",
+		OsmosisAssetlistJsonUrl:           "https://raw.githubusercontent.com/osmosis-labs/assetlists/main/osmosis-1/osmosis-1.assetlist.json",
+		OsmosisAssetlistRefreshInterval:   "15m",
+		OsmosisAssetlistRetryInterval:     "30s",
+		TradesMaxAge:                      "48h",
+		CandlesInterval:                   "1m",
+		CandlesPeriod:                     "48h",
+	}
+}

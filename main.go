@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"strings"
 	"time"
 
 	"github.com/mintthemoon/currents/api"
@@ -13,32 +12,30 @@ import (
 )
 
 func main() {
-	logLevelEnv := os.Getenv(config.EnvLogLevel)
-	if logLevelEnv == "" {
-		logLevelEnv = config.DefaultLogLevel
-	}
-	logLevel, err := zerolog.ParseLevel(logLevelEnv)
-	if err != nil {
-		logLevel = zerolog.InfoLevel
-	}
 	logger := zerolog.
 		New(zerolog.ConsoleWriter{
 			Out:        os.Stderr,
 			TimeFormat: time.StampMilli,
 		}).
-		Level(logLevel).
+		Level(config.Cfg.LogLevel).
 		With().
 		Timestamp().
 		Logger()
-	storeBackend := os.Getenv(config.EnvStoreBackend)
-	if storeBackend == "" {
-		storeBackend = config.DefaultStoreBackend
-	}
-	storeUrl := os.Getenv(config.EnvStoreUrl)
-	if storeUrl == "" {
-		storeUrl = "http://localhost:8086"
-	}
-	storeManager, err := store.NewStoreManager(storeBackend, storeUrl, logger)
+	logger.Trace().
+		Any("exchanges", config.Cfg.Exchanges).
+		Str("log_level", config.Cfg.LogLevel.String()).
+		Str("store_backend", config.Cfg.StoreBackend).
+		Str("store_url", config.Cfg.StoreUrl).
+		Str("influxdb_token", config.Cfg.InfluxdbToken).
+		Str("influxdb_organization", config.Cfg.InfluxdbOrganization).
+		Str("osmosis_assetlist_json_url", config.Cfg.OsmosisAssetlistJsonUrl).
+		Dur("osmosis_assetlist_refresh_interval", config.Cfg.OsmosisAssetlistRefreshInterval).
+		Dur("osmosis_assetlist_retry_interval", config.Cfg.OsmosisAssetlistRetryInterval).
+		Dur("trades_max_age", config.Cfg.TradesMaxAge).
+		Dur("candles_interval", config.Cfg.CandlesInterval).
+		Dur("candles_period", config.Cfg.CandlesPeriod).
+		Msg("config")
+	storeManager, err := store.NewStoreManager(config.Cfg.StoreBackend, config.Cfg.StoreUrl, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to initialize database")
 	}
@@ -47,13 +44,8 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("database health check failed")
 	}
-	exchangesEnv := os.Getenv(config.EnvExchanges)
-	if exchangesEnv == "" {
-		exchangesEnv = config.DefaultExchanges
-	}
-	exchangeNames := strings.Split(exchangesEnv, ",")
-	exchanges := make(map[string]exchange.Exchange, len(exchangeNames))
-	for _, exchangeName := range exchangeNames {
+	exchanges := make(map[string]exchange.Exchange, len(config.Cfg.Exchanges))
+	for _, exchangeName := range config.Cfg.Exchanges {
 		store, err := storeManager.Store(exchangeName)
 		if err != nil {
 			logger.Error().Err(err).Str("exchange", exchangeName).Msg("failed to initialize exchange store")

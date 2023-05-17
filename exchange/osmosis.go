@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -146,34 +145,12 @@ func (o *OsmosisExchange) GetTrades(event *coretypes.ResultEvent) []trading.Trad
 }
 
 func (o *OsmosisExchange) PollAssetList() error {
-	url := os.Getenv("OSMOSIS_ASSETLIST_JSON_URL")
-	if url == "" {
-		url = config.DefaultOsmosisAssetlistJsonUrl
-	}
-	refreshIntervalStr := os.Getenv(config.EnvOsmosisAssetlistRefreshInterval)
-	if refreshIntervalStr == "" {
-		refreshIntervalStr = config.DefaultOsmosisAssetlistRefreshInterval
-	}
-	refreshInterval, err := time.ParseDuration(refreshIntervalStr)
-	if err != nil {
-		o.logger.Error().Err(err).Msg("failed to parse asset list refresh interval")
-		return err
-	}
-	retryIntervalStr := os.Getenv(config.EnvOsmosisAssetlistRetryInterval)
-	if retryIntervalStr == "" {
-		retryIntervalStr = config.DefaultOsmosisAssetlistRetryInterval
-	}
-	retryInterval, err := time.ParseDuration(retryIntervalStr)
-	if err != nil {
-		o.logger.Error().Err(err).Msg("failed to parse asset list retry interval")
-		return err
-	}
 	go func() {
 		for {
-			assetList, err := LoadOsmosisAssetList(url)
+			assetList, err := LoadOsmosisAssetList(config.Cfg.OsmosisAssetlistJsonUrl)
 			if err != nil {
-				o.logger.Error().Err(err).Str("url", url).Msg("failed to load asset list")
-				time.Sleep(retryInterval)
+				o.logger.Error().Err(err).Str("url", config.Cfg.OsmosisAssetlistJsonUrl).Msg("failed to load asset list")
+				time.Sleep(config.Cfg.OsmosisAssetlistRetryInterval)
 				continue
 			}
 			assets := make(map[string]*assetlist.Asset, len(assetList.Assets))
@@ -223,7 +200,7 @@ func (o *OsmosisExchange) PollAssetList() error {
 			}
 			o.pairs = pairs
 			o.logger.Debug().Int("num_assets", len(o.assets)).Msg("refreshed asset list")
-			time.Sleep(refreshInterval)
+			time.Sleep(config.Cfg.OsmosisAssetlistRefreshInterval)
 		}
 	}()
 	return nil

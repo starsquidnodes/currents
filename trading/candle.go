@@ -166,10 +166,6 @@ func (c *Candles) PushTrade(trade *Trade) error {
 	return nil
 }
 
-func (c *Candles) List() []*Candle {
-	return c.ListRange(1, len(c.candles))
-}
-
 func (c *Candles) ListRange(start int, end int) []*Candle {
 	if start < 0 || end > len(c.candles) || end < start {
 		return []*Candle{}
