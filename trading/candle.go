@@ -215,20 +215,17 @@ func (c *Candle) Reversed() *Candle {
 		Start:       c.Start,
 		End:         c.End,
 	}
-	zero := decimal.Big{}
-	one := decimal.Big{}
-	one.SetUint64(1)
-	if c.Open.Cmp(&zero) != 0 {
-		r.Open.Quo(&one, &c.Open)
+	if c.Open.Cmp(math.Zero) != 0 {
+		r.Open.Quo(math.One, &c.Open)
 	}
-	if c.Close.Cmp(&zero) != 0 {
-		r.Close.Quo(&one, &c.Close)
+	if c.Close.Cmp(math.Zero) != 0 {
+		r.Close.Quo(math.One, &c.Close)
 	}
-	if c.Low.Cmp(&zero) != 0 {
-		r.High.Quo(&one, &c.Low)
+	if c.Low.Cmp(math.Zero) != 0 {
+		r.High.Quo(math.One, &c.Low)
 	}
-	if c.High.Cmp(&zero) != 0 {
-		r.Low.Quo(&one, &c.High)
+	if c.High.Cmp(math.Zero) != 0 {
+		r.Low.Quo(math.One, &c.High)
 	}
 	return &r
 }
