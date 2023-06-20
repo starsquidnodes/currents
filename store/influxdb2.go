@@ -6,12 +6,13 @@ import (
 	"os"
 	"time"
 
+	"indexer/config"
+	"indexer/token"
+	"indexer/trading"
+
 	"github.com/google/uuid"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
-	"github.com/mintthemoon/currents/config"
-	"github.com/mintthemoon/currents/token"
-	"github.com/mintthemoon/currents/trading"
 	"github.com/rs/zerolog"
 )
 
@@ -110,8 +111,9 @@ func (i *Influxdb2Manager) Close() {
 
 func NewInfluxdb2Store(name string, client influxdb2.Client, logger zerolog.Logger) (*Influxdb2Store, error) {
 	storeLogger := logger.With().Str("store", name).Logger()
-	writer := client.WriteAPI(config.Cfg.InfluxdbOrganization, name)
-	reader := client.QueryAPI(config.Cfg.InfluxdbOrganization)
+	cfg := config.Cfg.StoreConfig["influxdb2"]
+	writer := client.WriteAPI(cfg.Organization, name)
+	reader := client.QueryAPI(cfg.Organization)
 	errorsChannel := writer.Errors()
 	go func() {
 		for err := range errorsChannel {

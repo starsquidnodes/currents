@@ -3,8 +3,9 @@ package trading
 import (
 	"time"
 
+	"indexer/token"
+
 	"github.com/ericlagergren/decimal"
-	"github.com/mintthemoon/currents/token"
 )
 
 type (

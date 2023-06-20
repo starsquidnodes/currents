@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	"indexer/math"
+	"indexer/token"
+
 	"github.com/ericlagergren/decimal"
-	"github.com/mintthemoon/currents/math"
-	"github.com/mintthemoon/currents/token"
 )
 
 type (
@@ -54,7 +55,7 @@ func (c *Candles) Reset(end time.Time) {
 		c.candles[i].Low.Set(math.Zero)
 		c.candles[i].Open.Set(math.Zero)
 		c.candles[i].Close.Set(math.Zero)
-		c.candles[i].Start = end.Add(-time.Duration(i + 1) * c.interval)
+		c.candles[i].Start = end.Add(-time.Duration(i+1) * c.interval)
 		c.candles[i].End = c.candles[i].Start.Add(c.interval)
 	}
 	c.cutoff = c.candles[0].Start
@@ -170,9 +171,9 @@ func (c *Candles) ListRange(start int, end int) []*Candle {
 	if start < 0 || end > len(c.candles) || end < start {
 		return []*Candle{}
 	}
-	candles := make([]*Candle, end - start)
+	candles := make([]*Candle, end-start)
 	for i := start; i < end; i++ {
-		candles[i - start] = &c.candles[i]
+		candles[i-start] = &c.candles[i]
 	}
 	return candles
 }
@@ -183,10 +184,10 @@ func (c *Candles) Len() int {
 
 func (c *Candles) Ticker() *Ticker {
 	ticker := &Ticker{
-		BaseAsset:   c.Pair.Base,
-		QuoteAsset:  c.Pair.Quote,
-		Price: 	 c.candles[0].Close,
-		Time: 	  c.cutoff,
+		BaseAsset:  c.Pair.Base,
+		QuoteAsset: c.Pair.Quote,
+		Price:      c.candles[0].Close,
+		Time:       c.cutoff,
 	}
 	start := ticker.Time.Add(-24 * time.Hour)
 	for _, candle := range c.candles {

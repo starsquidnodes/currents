@@ -1,0 +1,27 @@
+exchanges = [
+    "osmosis",
+    "fin"
+]
+
+log_level = "DEBUG"
+
+store_backend = "sqlite"
+
+[store.influxdb2]
+url = "http://localhost:8081"
+token = "foobar"
+org = "myorg"
+
+[store.sqlite]
+path = "/tmp/my.db"
+
+[exchange.osmosis]
+assets_url = "https://some.url"
+assets_refresh_interval = "1h"
+assets_retry_interval = "5m"
+
+[exchange.fin]
+assets_url = "https://some.url"
+assets_refresh_interval = "1h"
+assets_retry_interval = "5m"
+

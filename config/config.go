@@ -10,80 +10,115 @@ import (
 
 type (
 	StringConfig struct {
-		Exchanges string
-		LogLevel string
-		StoreBackend string
-		StoreUrl string
-		InfluxdbToken string
-		InfluxdbOrganization string
-		OsmosisAssetlistJsonUrl string
-		OsmosisAssetlistRefreshInterval string
-		OsmosisAssetlistRetryInterval string
-		TradesMaxAge string
-		CandlesInterval string
-		CandlesPeriod string
+		Exchanges                    string
+		LogLevel                     string
+		StoreBackend                 string
+		StoreUrl                     string
+		InfluxdbToken                string
+		InfluxdbOrganization         string
+		OsmosisAssetsJsonUrl         string
+		OsmosisAssetsRefreshInterval string
+		OsmosisAssetsRetryInterval   string
+		TradesMaxAge                 string
+		CandlesInterval              string
+		CandlesPeriod                string
+	}
+
+	StoreConfig struct {
+		Url          string `toml:"url"`
+		Token        string `toml:"token"`
+		Organization string `toml:"org"`
+		Path         string `toml:"path"`
+	}
+
+	ExchangeConfig struct {
+		AssetsUrl             string        `toml:"assets_url"`
+		AssetsRefreshInterval time.Duration `toml:"assets_refresh_interval"`
+		AssetsRetryInterval   time.Duration `toml:"assets_retry_interval"`
 	}
 
 	Config struct {
-		Exchanges []string
-		LogLevel zerolog.Level
-		StoreBackend string
-		StoreUrl string
-		InfluxdbToken string
-		InfluxdbOrganization string
-		OsmosisAssetlistJsonUrl string
-		OsmosisAssetlistRefreshInterval time.Duration
-		OsmosisAssetlistRetryInterval time.Duration
-		TradesMaxAge time.Duration
-		CandlesInterval time.Duration
-		CandlesPeriod time.Duration
+		Exchanges       []string                  `toml:"exchanges"`
+		LogLevel        zerolog.Level             `toml:"log_level"`
+		StoreBackend    string                    `toml:"store_backend"`
+		StoreConfig     map[string]StoreConfig    `toml:"store"`
+		ExchangeConfig  map[string]ExchangeConfig `toml:"exchange"`
+		TradesMaxAge    time.Duration             `toml:"trades_max_age"`
+		CandlesInterval time.Duration             `toml:"candles_interval"`
+		CandlesPeriod   time.Duration             `toml:"candle_period"`
 	}
 )
 
 var Cfg = InitConfig()
 
-func (s *StringConfig) Validate() (*Config, error) {
-	exchanges := strings.Split(s.Exchanges, ",")
-	logLevel, err := zerolog.ParseLevel(s.LogLevel)
+func (sc *StringConfig) Validate() (*Config, error) {
+	exchanges := strings.Split(sc.Exchanges, ",")
+	logLevel, err := zerolog.ParseLevel(sc.LogLevel)
 	if err != nil {
 		logLevel = zerolog.InfoLevel
 	}
-	if s.StoreBackend != "influxdb2" {
+
+	supportedBackends := map[string]struct{}{
+		"influxdb2": {},
+		"sqlite":    {},
+	}
+	_, found := supportedBackends[sc.StoreBackend]
+	if !found {
 		return nil, fmt.Errorf("invalid store backend")
 	}
-	osmosisAssetlistRefreshInterval, err := time.ParseDuration(s.OsmosisAssetlistRefreshInterval)
-	if err != nil {
-		return nil, fmt.Errorf("invalid osmosis assetlist refresh interval")
+
+	exchangeConfig := map[string]ExchangeConfig{}
+
+	for _, exchange := range exchanges {
+		switch exchange {
+		case "osmosis":
+			assetsRefreshInterval, err := time.ParseDuration(sc.OsmosisAssetsRefreshInterval)
+			if err != nil {
+				return nil, fmt.Errorf("invalid osmosis assetlist refresh interval")
+			}
+			assetsRetryInterval, err := time.ParseDuration(sc.OsmosisAssetsRetryInterval)
+			if err != nil {
+				return nil, fmt.Errorf("invalid osmosis assetlist retry interval")
+			}
+
+			exchangeConfig[exchange] = ExchangeConfig{
+				AssetsRefreshInterval: assetsRefreshInterval,
+				AssetsRetryInterval:   assetsRetryInterval,
+			}
+		}
 	}
-	osmosisAssetlistRetryInterval, err := time.ParseDuration(s.OsmosisAssetlistRetryInterval)
-	if err != nil {
-		return nil, fmt.Errorf("invalid osmosis assetlist retry interval")
-	}
-	tradesMaxAge, err := time.ParseDuration(s.TradesMaxAge)
+
+	tradesMaxAge, err := time.ParseDuration(sc.TradesMaxAge)
 	if err != nil {
 		return nil, fmt.Errorf("invalid trades max age")
 	}
-	candlesInterval, err := time.ParseDuration(s.CandlesInterval)
+	candlesInterval, err := time.ParseDuration(sc.CandlesInterval)
 	if err != nil {
 		return nil, fmt.Errorf("invalid candles interval")
 	}
-	candlesPeriod, err := time.ParseDuration(s.CandlesPeriod)
+	candlesPeriod, err := time.ParseDuration(sc.CandlesPeriod)
 	if err != nil {
 		return nil, fmt.Errorf("invalid candles period")
 	}
+
+	storeConfig := map[string]StoreConfig{
+		sc.StoreBackend: {
+			Url:          sc.StoreUrl,
+			Token:        sc.InfluxdbToken,
+			Organization: sc.InfluxdbOrganization,
+			Path:         "TODO path",
+		},
+	}
+
 	return &Config{
-		Exchanges: exchanges,
-		LogLevel: logLevel,
-		StoreBackend: s.StoreBackend,
-		StoreUrl: s.StoreUrl,
-		InfluxdbToken: s.InfluxdbToken,
-		InfluxdbOrganization: s.InfluxdbOrganization,
-		OsmosisAssetlistJsonUrl: s.OsmosisAssetlistJsonUrl,
-		OsmosisAssetlistRefreshInterval: osmosisAssetlistRefreshInterval,
-		OsmosisAssetlistRetryInterval: osmosisAssetlistRetryInterval,
-		TradesMaxAge: tradesMaxAge,
+		Exchanges:       exchanges,
+		LogLevel:        logLevel,
+		StoreBackend:    sc.StoreBackend,
+		StoreConfig:     storeConfig,
+		ExchangeConfig:  exchangeConfig,
+		TradesMaxAge:    tradesMaxAge,
 		CandlesInterval: candlesInterval,
-		CandlesPeriod: candlesPeriod,
+		CandlesPeriod:   candlesPeriod,
 	}, nil
 }
 
@@ -118,14 +153,14 @@ func MergeConfig(base *StringConfig, overlay *StringConfig) *StringConfig {
 	if overlay.InfluxdbOrganization != "" {
 		base.InfluxdbOrganization = overlay.InfluxdbOrganization
 	}
-	if overlay.OsmosisAssetlistJsonUrl != "" {
-		base.OsmosisAssetlistJsonUrl = overlay.OsmosisAssetlistJsonUrl
+	if overlay.OsmosisAssetsJsonUrl != "" {
+		base.OsmosisAssetsJsonUrl = overlay.OsmosisAssetsJsonUrl
 	}
-	if overlay.OsmosisAssetlistRefreshInterval != "" {
-		base.OsmosisAssetlistRefreshInterval = overlay.OsmosisAssetlistRefreshInterval
+	if overlay.OsmosisAssetsRefreshInterval != "" {
+		base.OsmosisAssetsRefreshInterval = overlay.OsmosisAssetsRefreshInterval
 	}
-	if overlay.OsmosisAssetlistRetryInterval != "" {
-		base.OsmosisAssetlistRetryInterval = overlay.OsmosisAssetlistRetryInterval
+	if overlay.OsmosisAssetsRetryInterval != "" {
+		base.OsmosisAssetsRetryInterval = overlay.OsmosisAssetsRetryInterval
 	}
 	if overlay.TradesMaxAge != "" {
 		base.TradesMaxAge = overlay.TradesMaxAge

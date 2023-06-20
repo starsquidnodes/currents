@@ -7,10 +7,11 @@ import (
 	"strconv"
 	"time"
 
+	"indexer/exchange"
+	"indexer/store"
+	"indexer/token"
+
 	"github.com/gin-gonic/gin"
-	"github.com/mintthemoon/currents/exchange"
-	"github.com/mintthemoon/currents/store"
-	"github.com/mintthemoon/currents/token"
 	"github.com/rs/zerolog"
 )
 
@@ -90,7 +91,7 @@ func (a *Api) AddRoutes() error {
 					<h1>currents</h1>
 					<ul>
 						<li><a href="https://docs.mintthemoon.xyz/currents" target="_blank">Docs</a></li>
-						<li><a href="https://github.com/mintthemoon/currents" target="_blank">Source</a></li>
+						<li><a href="https://indexer" target="_blank">Source</a></li>
 					</ul>
 				</nav>
 				<h1>Price Indexer API</h1>
@@ -172,7 +173,7 @@ func (a *Api) AddRoutes() error {
 			pairStrings[i] = pair.String()
 		}
 		sort.Slice(pairStrings, func(i, j int) bool {
-			return pairStrings[i] < pairStrings[j]	
+			return pairStrings[i] < pairStrings[j]
 		})
 		ctx.JSON(200, gin.H{"pairs": pairStrings})
 	})
@@ -200,7 +201,7 @@ func (a *Api) AddRoutes() error {
 			ctx.JSON(404, gin.H{"error": "exchange not found"})
 			return
 		}
-		ctx.JSON(400, gin.H{"error": "must provide base/quote pair in request, e.g. /exchanges/" + exchangeName + "/candles/BASE/QUOTE"})		
+		ctx.JSON(400, gin.H{"error": "must provide base/quote pair in request, e.g. /exchanges/" + exchangeName + "/candles/BASE/QUOTE"})
 	})
 	a.engine.GET("/exchanges/:exchange/trades", func(ctx *gin.Context) {
 		exchangeName := ctx.Param("exchange")
@@ -257,7 +258,7 @@ func (a *Api) AddRoutes() error {
 			ctx.JSON(400, gin.H{"error": "invalid page"})
 			return
 		}
-		pageStart := (page - 1) * CandlesPerPage + 1
+		pageStart := (page-1)*CandlesPerPage + 1
 		pageEnd := pageStart + CandlesPerPage + 1
 		if pageEnd > numCandles {
 			pageEnd = numCandles

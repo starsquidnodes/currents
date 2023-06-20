@@ -1,8 +1,9 @@
-module github.com/mintthemoon/currents
+module indexer
 
 go 1.20
 
 require (
+	github.com/BurntSushi/toml v1.2.1
 	github.com/cometbft/cometbft v0.37.1
 	github.com/ericlagergren/decimal v0.0.0-20221120152707-495c53812d05
 	github.com/gin-gonic/gin v1.9.0

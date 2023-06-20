@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mintthemoon/currents/token"
-	"github.com/mintthemoon/currents/trading"
+	"indexer/token"
+	"indexer/trading"
+
 	"github.com/rs/zerolog"
 )
 

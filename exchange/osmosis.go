@@ -8,26 +8,27 @@ import (
 	"strings"
 	"time"
 
+	"indexer/chain"
+	"indexer/config"
+	"indexer/store"
+	"indexer/token"
+	"indexer/trading"
+
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
-	"github.com/mintthemoon/currents/chain"
-	"github.com/mintthemoon/currents/config"
-	"github.com/mintthemoon/currents/store"
-	"github.com/mintthemoon/currents/token"
-	"github.com/mintthemoon/currents/trading"
 	"github.com/osmosis-labs/assetlist"
 	"github.com/rs/zerolog"
 )
 
 type (
 	OsmosisExchange struct {
-		rpc          *chain.CometRpc
-		assets       map[string]*assetlist.Asset
-		assetsSymbol map[string]*assetlist.Asset
-		pairs        []*token.Pair
-		store        store.Store
+		rpc                *chain.CometRpc
+		assets             map[string]*assetlist.Asset
+		assetsSymbol       map[string]*assetlist.Asset
+		pairs              []*token.Pair
+		store              store.Store
 		tradeSubscriptions []chan *trading.Trade
-		pairSubscriptions []chan []*token.Pair
-		logger       zerolog.Logger
+		pairSubscriptions  []chan []*token.Pair
+		logger             zerolog.Logger
 	}
 
 	OsmosisTokenSwap struct {
@@ -147,10 +148,11 @@ func (o *OsmosisExchange) GetTrades(event *coretypes.ResultEvent) []trading.Trad
 func (o *OsmosisExchange) PollAssetList() error {
 	go func() {
 		for {
-			assetList, err := LoadOsmosisAssetList(config.Cfg.OsmosisAssetlistJsonUrl)
+			cfg := config.Cfg.ExchangeConfig["osmosis"]
+			assetList, err := LoadOsmosisAssetList(cfg.AssetsUrl)
 			if err != nil {
-				o.logger.Error().Err(err).Str("url", config.Cfg.OsmosisAssetlistJsonUrl).Msg("failed to load asset list")
-				time.Sleep(config.Cfg.OsmosisAssetlistRetryInterval)
+				o.logger.Error().Err(err).Str("url", cfg.AssetsUrl).Msg("failed to load asset list")
+				time.Sleep(cfg.AssetsRetryInterval)
 				continue
 			}
 			assets := make(map[string]*assetlist.Asset, len(assetList.Assets))
@@ -200,7 +202,7 @@ func (o *OsmosisExchange) PollAssetList() error {
 			}
 			o.pairs = pairs
 			o.logger.Debug().Int("num_assets", len(o.assets)).Msg("refreshed asset list")
-			time.Sleep(config.Cfg.OsmosisAssetlistRefreshInterval)
+			time.Sleep(cfg.AssetsRefreshInterval)
 		}
 	}()
 	return nil

@@ -4,18 +4,19 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mintthemoon/currents/config"
-	"github.com/mintthemoon/currents/store"
-	"github.com/mintthemoon/currents/token"
-	"github.com/mintthemoon/currents/trading"
+	"indexer/config"
+	"indexer/store"
+	"indexer/token"
+	"indexer/trading"
+
 	"github.com/rs/zerolog"
 )
 
 type (
 	ExchangeManager struct {
-		Exchanges       map[string]Exchange
-		data 		  	map[string]*ExchangeData
-		logger          zerolog.Logger
+		Exchanges map[string]Exchange
+		data      map[string]*ExchangeData
+		logger    zerolog.Logger
 	}
 
 	Exchange interface {
@@ -29,20 +30,20 @@ type (
 	}
 
 	ExchangeData struct {
-		pairs chan []*token.Pair
-		trades chan *trading.Trade
+		pairs   chan []*token.Pair
+		trades  chan *trading.Trade
 		candles map[string]*trading.Candles
 		tickers map[string]*trading.Ticker
-		db store.Store
-		logger zerolog.Logger
+		db      store.Store
+		logger  zerolog.Logger
 	}
 )
 
 func NewExchangeManager(exchanges map[string]Exchange, logger zerolog.Logger) (*ExchangeManager, error) {
 	e := &ExchangeManager{
-		Exchanges:       exchanges,
-		data: map[string]*ExchangeData{},
-		logger:          logger,
+		Exchanges: exchanges,
+		data:      map[string]*ExchangeData{},
+		logger:    logger,
 	}
 	return e, nil
 }
@@ -98,12 +99,12 @@ func NewExchange(name string, store store.Store, logger zerolog.Logger) (Exchang
 
 func NewExchangeData(pairs chan []*token.Pair, trades chan *trading.Trade, db store.Store, logger zerolog.Logger) *ExchangeData {
 	return &ExchangeData{
-		pairs: pairs,
-		trades: trades,
+		pairs:   pairs,
+		trades:  trades,
 		candles: map[string]*trading.Candles{},
 		tickers: map[string]*trading.Ticker{},
-		db: db,
-		logger: logger,
+		db:      db,
+		logger:  logger,
 	}
 }
 
